@@ -1,16 +1,43 @@
-# kont
+# KONT — Lig & Kupa Yöneticisi
 
-A new Flutter project.
+تطبيق أندرويد احترافي لإدارة الدوريات والكؤوس والبطولات.
 
-## Getting Started
+A professional Flutter app for building **real** football competitions on Android: leagues, cups, World Cup, Champions League, Swiss, and group stages.
 
-This project is a starting point for a Flutter application.
+## ما تغيّر / Yenilikler
 
-A few resources to get you started if this is your first Flutter project:
+- واجهة أندرويد كاملة: شريط تنقل سفلي، معالج إنشاء متعدد الصفحات، شاشات متجاوبة.
+- إصلاح أخطاء إنشاء البطولة (Stepper القديم كان يتخطى الخطوة الأخيرة في الكأس).
+- 8 صيغ واقعية بدل 3 أنواع ناقصة:
+  1. **Tek Devre Lig** — كل الفرق ضد بعضها مرة واحدة
+  2. **Çift Devre Lig** — ذهاب وإياب (Süper Lig / Premier Lig)
+  3. **Kupa (Tek Maç)** — خروج مغلوب، باي تلقائي، الجولة التالية تلقائية
+  4. **Rövanşlı Eleme** — مباراتان ومجموع الأهداف ثم ركلات ترجيح
+  5. **Grup Turnuvası** — مجموعات مستقلة مع جداول نقاط
+  6. **Dünya Kupası** — مجموعات ثم خروج مغلوب
+  7. **Şampiyonlar Ligi** — مجموعات ثم إقصاء ذهاب/إياب والنهائي مباراة واحدة
+  8. **Swiss / Sabit Maç** — كل فريق يلعب N مباريات
+- جدول النقاط يحترم إعدادات الفوز/التعادل/الخسارة.
+- محرك جدولة Berger (circle method) مع أيام الراحة وعدم تعارض نفس اليوم.
+- حفظ كامل للأحداث والأهداف والضربات الترجيحية.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## التشغيل على أندرويد
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+المتطلبات: Flutter 3.22+ و Android SDK.
+
+```bash
+flutter create . --platforms=android
+flutter pub get
+flutter run
+```
+
+أو من Android Studio: افتح المجلد وشغّل التطبيق على جهاز/محاكي.
+
+معرّف الحزمة: `com.ligplanlayici.kont`
+
+## الاستخدام
+
+1. من تبويب **Takımlar** أضف فرقاً ولاعبين.
+2. من **Ligler** أنشئ بطولة واختر الصيغة الواقعية.
+3. أدخل النتائج من **Canlı** أو من تفاصيل المباراة.
+4. في الكأس وكأس العالم تُولَّد الجولة التالية تلقائياً بعد اكتمال الجولة الحالية.

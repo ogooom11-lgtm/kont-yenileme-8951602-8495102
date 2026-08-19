@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'theme/app_theme.dart';
-import 'providers/app_state.dart';
-import 'pages/home_page.dart';
 
-void main() async {
+import 'pages/home_shell.dart';
+import 'providers/app_state.dart';
+import 'theme/app_theme.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   final appState = AppState();
-  await appState.load(); // حمّل الحالة من التخزين المحلي
+  await appState.load();
   runApp(MyApp(appState: appState));
 }
 
@@ -23,11 +31,11 @@ class MyApp extends StatelessWidget {
         builder: (_, state, __) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            title: 'Lig Planlayıcı',
+            title: 'KONT Lig Planlayıcı',
             themeMode: state.themeMode,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            home: const HomePage(),
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            home: const HomeShell(),
           );
         },
       ),

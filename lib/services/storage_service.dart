@@ -1,14 +1,20 @@
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
-  static const _key = 'app_state_v1';
+  static const _key = 'app_state_v2';
+  static const _legacyKey = 'app_state_v1';
 
   Future<Map<String, dynamic>?> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
+    final raw = prefs.getString(_key) ?? prefs.getString(_legacyKey);
     if (raw == null) return null;
-    return jsonDecode(raw) as Map<String, dynamic>;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> save(Map<String, dynamic> map) async {
