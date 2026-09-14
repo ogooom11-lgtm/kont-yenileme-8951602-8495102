@@ -117,56 +117,105 @@ class LeagueDetailsPage extends StatelessWidget {
 
   void _settings(BuildContext context, AppState state, League league) {
     final ctrl = TextEditingController(text: league.title);
+    var autoAdvance = league.autoAdvance;
+    var extraTime = league.allowExtraTime;
+    var penalties = league.allowPenalties;
+    var restHours = league.minRestHours;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 8, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(labelText: 'Turnuva adı'),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () {
-                if (ctrl.text.trim().isEmpty) return;
-                state.updateLeagueName(league.id, ctrl.text);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Kaydet'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: ctx,
-                  builder: (c) => AlertDialog(
-                    title: const Text('Silinsin mi?'),
-                    content: const Text('Tüm maçlar kalıcı olarak silinir.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(c, false),
-                          child: const Text('İptal')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(c, true),
-                          child: const Text('Sil')),
-                    ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 8, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  decoration: const InputDecoration(labelText: 'Turnuva adı'),
+                ),
+                const SizedBox(height: 8),
+                if (league.format.hasKnockout) ...[
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Turları otomatik ilerlet'),
+                    value: autoAdvance,
+                    onChanged: (v) => setSheetState(() => autoAdvance = v),
                   ),
-                );
-                if (ok == true) {
-                  Navigator.pop(ctx);
-                  Navigator.pop(context);
-                  await state.deleteLeague(league.id);
-                }
-              },
-              child: const Text('Turnuvayı sil',
-                  style: TextStyle(color: Colors.red)),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Uzatma kuralı'),
+                    value: extraTime,
+                    onChanged: (v) => setSheetState(() => extraTime = v),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Penaltı atışları'),
+                    value: penalties,
+                    onChanged: (v) => setSheetState(() => penalties = v),
+                  ),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Minimum dinlenme: $restHours saat',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                Slider(
+                  value: restHours.toDouble().clamp(24.0, 96.0).toDouble(),
+                  min: 24,
+                  max: 96,
+                  divisions: 12,
+                  label: '$restHours saat',
+                  onChanged: (v) => setSheetState(() => restHours = v.toInt()),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () async {
+                    if (ctrl.text.trim().isEmpty) return;
+                    await state.updateLeagueName(league.id, ctrl.text);
+                    await state.updateLeagueRules(
+                      league.id,
+                      autoAdvance: autoAdvance,
+                      allowExtraTime: extraTime,
+                      allowPenalties: penalties,
+                      minRestHours: restHours,
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: const Text('Ayarları kaydet'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: ctx,
+                      builder: (c) => AlertDialog(
+                        title: const Text('Silinsin mi?'),
+                        content: const Text('Tüm maçlar kalıcı olarak silinir.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: const Text('İptal')),
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, true),
+                              child: const Text('Sil')),
+                        ],
+                      ),
+                    );
+                    if (ok == true && ctx.mounted) {
+                      Navigator.pop(ctx);
+                      Navigator.pop(context);
+                      await state.deleteLeague(league.id);
+                    }
+                  },
+                  child: const Text('Turnuvayı sil',
+                      style: TextStyle(color: Colors.red)),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -219,6 +268,16 @@ class _OverviewTab extends StatelessWidget {
             ),
           ),
         ),
+        if (league.notes.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.notes_outlined),
+              title: const Text('Turnuva notu'),
+              subtitle: Text(league.notes),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         const Text('Sıradaki maç',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),

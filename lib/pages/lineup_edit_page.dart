@@ -125,13 +125,19 @@ class _LineupEditPageState extends State<LineupEditPage> {
                 );
                 return;
               }
-              await context.read<AppState>().setLineup(
+              final error = await context.read<AppState>().setLineup(
                     matchId: m.id,
                     isHome: widget.isHome,
                     playerIds: _selected.toList(),
                     keeperId: _keeperId,
                   );
-              if (context.mounted) Navigator.pop(context);
+              if (!context.mounted) return;
+              if (error != null) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(error)));
+                return;
+              }
+              Navigator.pop(context);
             },
           ),
         ),

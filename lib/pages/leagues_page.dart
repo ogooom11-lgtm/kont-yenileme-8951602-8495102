@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/match_card.dart';
 import 'league_create_page.dart';
 import 'league_details_page.dart';
+import 'settings_page.dart';
 
 class LeaguesPage extends StatelessWidget {
   const LeaguesPage({super.key});
@@ -33,6 +34,13 @@ class LeaguesPage extends StatelessWidget {
             icon: Icon(Theme.of(context).brightness == Brightness.dark
                 ? Icons.light_mode
                 : Icons.dark_mode),
+          ),
+          IconButton(
+            tooltip: 'Ayarlar',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
+            icon: const Icon(Icons.tune),
           ),
         ],
       ),

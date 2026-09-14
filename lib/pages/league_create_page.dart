@@ -47,7 +47,14 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
 
   DateTime? _start;
   int _daysBetween = 3;
+  int _minRestHours = 48;
   RangeValues _hours = const RangeValues(16, 22);
+  bool _autoAdvance = true;
+  bool _allowExtraTime = true;
+  bool _allowPenalties = true;
+  bool _randomizeDraw = true;
+  bool _thirdPlaceMatch = false;
+  String _notes = '';
 
   bool _creating = false;
 
@@ -72,7 +79,7 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
 
   Future<void> _go(int next) async {
     if (next > _step && !_validateStep(_step)) return;
-    setState(() => _step = next.clamp(0, _total - 1));
+    setState(() => _step = next.clamp(0, _total - 1).toInt());
     await _page.animateToPage(
       _step,
       duration: const Duration(milliseconds: 280),
@@ -101,6 +108,15 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
         }
         if (_format.hasGroups && _selected.length < _groupCount * 2) {
           _toast('Her grupta en az 2 takım olmalı.');
+          return false;
+        }
+        if (_format.hasGroups && _format.hasKnockout && _qualifiers != 2) {
+          _toast('Gruplu elemede her gruptan 2 takım çıkmalıdır.');
+          return false;
+        }
+        if (_format == LeagueFormat.swiss &&
+            _swissMatches >= _selected.length) {
+          _toast('Her takım en fazla ${_selected.length - 1} maç oynayabilir.');
           return false;
         }
         return true;
@@ -641,6 +657,70 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
           activeColor: _color,
           onChanged: (v) => setState(() => _daysBetween = v.toInt()),
         ),
+        const SizedBox(height: 4),
+        Text('Minimum dinlenme: $_minRestHours saat',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        Slider(
+          value: _minRestHours.toDouble(),
+          min: 24,
+          max: 96,
+          divisions: 12,
+          label: '$_minRestHours saat',
+          activeColor: _color,
+          onChanged: (v) => setState(() => _minRestHours = v.toInt()),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Column(
+            children: [
+              if (_format.hasKnockout)
+                SwitchListTile.adaptive(
+                title: const Text('Turları otomatik ilerlet'),
+                subtitle: const Text('Son maç bitince sonraki eleme turunu üret'),
+                value: _autoAdvance,
+                onChanged: (v) => setState(() => _autoAdvance = v),
+              ),
+              if (_format.hasKnockout)
+                SwitchListTile.adaptive(
+                title: const Text('Uzatma kuralı'),
+                subtitle: const Text('Eleme maçında normal süre sonrası uzatma'),
+                value: _allowExtraTime,
+                onChanged: (v) => setState(() => _allowExtraTime = v),
+              ),
+              if (_format.hasKnockout)
+                SwitchListTile.adaptive(
+                title: const Text('Penaltı atışları'),
+                subtitle: const Text('Eşitlikte kazananı penaltıyla belirle'),
+                value: _allowPenalties,
+                onChanged: (v) => setState(() => _allowPenalties = v),
+              ),
+              if (_format.hasKnockout)
+                SwitchListTile.adaptive(
+                  title: const Text('Üçüncülük maçı'),
+                  subtitle: const Text('Yarı final kaybedenleri karşılaşsın'),
+                  value: _thirdPlaceMatch,
+                  onChanged: (v) => setState(() => _thirdPlaceMatch = v),
+                ),
+              if (_format.hasGroups)
+                SwitchListTile.adaptive(
+                  title: const Text('Kura ile grupları karıştır'),
+                  subtitle: const Text('Kapalıysa takım listesi sırası kullanılır'),
+                  value: _randomizeDraw,
+                  onChanged: (v) => setState(() => _randomizeDraw = v),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Turnuva notu (opsiyonel)',
+            hintText: 'Stadyum, ödül veya özel kurallar...',
+            prefixIcon: Icon(Icons.notes_outlined),
+          ),
+          onChanged: (v) => _notes = v,
+        ),
         const SizedBox(height: 12),
         Card(
           color: AppTheme.seed.withOpacity(0.08),
@@ -659,6 +739,9 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
                 Text('• ${_format.title}'),
                 Text('• ${_selected.length} takım'),
                 if (_format.hasGroups) Text('• $_groupCount grup'),
+                Text('• Dinlenme aralığı $_minRestHours saat'),
+                if (_format.hasKnockout)
+                  Text('• ${_allowPenalties ? "Penaltı açık" : "Penaltı kapalı"}'),
                 if (_start != null)
                   Text('• Başlangıç ${_start!.day}.${_start!.month}.${_start!.year}'),
               ],
@@ -687,7 +770,14 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
           startHour: _hours.start.toInt(),
           endHour: _hours.end.toInt(),
           daysBetweenRounds: _daysBetween,
-          minGap: Duration(hours: (_daysBetween * 24) - 8),
+          minGap: Duration(hours: _minRestHours),
+          minRestHours: _minRestHours,
+          autoAdvance: _autoAdvance,
+          allowExtraTime: _allowExtraTime,
+          allowPenalties: _allowPenalties,
+          randomizeDraw: _randomizeDraw,
+          thirdPlaceMatch: _thirdPlaceMatch,
+          notes: _notes,
           winPoints: _winPoints,
           drawPoints: _drawPoints,
           losePoints: _losePoints,

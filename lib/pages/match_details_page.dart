@@ -127,6 +127,28 @@ class MatchDetailsPage extends StatelessWidget {
               label: const Text('Sonuç gir'),
             ),
           ],
+          if (m.status == MatchStatus.live) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => state.recordAiGoal(matchId: m.id, isHome: true),
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Ev golü'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => state.recordAiGoal(matchId: m.id, isHome: false),
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Dep golü'),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 18),
           Text('Kadrolar', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -183,7 +205,7 @@ class MatchDetailsPage extends StatelessWidget {
     final a = TextEditingController(text: '${m.awayGoals}');
     final ph = TextEditingController(text: '${m.homePenalties}');
     final pa = TextEditingController(text: '${m.awayPenalties}');
-    var pens = m.usedPenalties || m.stage.isKnockout;
+    var pens = m.usedPenalties || (m.stage.isKnockout && m.tieId == null);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -252,8 +274,22 @@ class MatchDetailsPage extends StatelessWidget {
                 ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: () {
-                  state.setMatchResult(
+                onPressed: () async {
+                  if (state.confirmResults) {
+                    final confirmed = await showDialog<bool>(
+                      context: ctx,
+                      builder: (confirmContext) => AlertDialog(
+                        title: const Text('Sonuç kaydedilsin mi?'),
+                        content: Text('${h.text.trim().isEmpty ? "0" : h.text} - ${a.text.trim().isEmpty ? "0" : a.text} sonucu resmi hale gelecek.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Düzenle')),
+                          FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Onayla')),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true || !ctx.mounted) return;
+                  }
+                  final error = await state.setMatchResult(
                     m.id,
                     int.tryParse(h.text) ?? 0,
                     int.tryParse(a.text) ?? 0,
@@ -261,6 +297,11 @@ class MatchDetailsPage extends StatelessWidget {
                     awayPenalties: int.tryParse(pa.text) ?? 0,
                     usedPenalties: pens,
                   );
+                  if (!ctx.mounted) return;
+                  if (error != null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(error)));
+                    return;
+                  }
                   Navigator.pop(ctx);
                 },
                 child: const Text('Kaydet ve bitir'),

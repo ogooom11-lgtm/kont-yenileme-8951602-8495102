@@ -75,6 +75,16 @@ class League {
   int legs;
   String icon;
 
+  /// Turnuvanın saha içi ve otomasyon kuralları.
+  bool autoAdvance;
+  bool allowExtraTime;
+  bool allowPenalties;
+  bool randomizeDraw;
+  int minRestHours;
+  bool thirdPlaceMatch;
+  List<StandingsTieBreaker> tieBreakers;
+  String notes;
+
   League({
     required this.id,
     required this.title,
@@ -93,6 +103,20 @@ class League {
     this.swissMatches = 3,
     this.legs = 1,
     this.icon = '🏆',
+    this.autoAdvance = true,
+    this.allowExtraTime = true,
+    this.allowPenalties = true,
+    this.randomizeDraw = true,
+    this.minRestHours = 48,
+    this.thirdPlaceMatch = false,
+    this.tieBreakers = const [
+      StandingsTieBreaker.points,
+      StandingsTieBreaker.goalDifference,
+      StandingsTieBreaker.goalsFor,
+      StandingsTieBreaker.wins,
+      StandingsTieBreaker.headToHead,
+    ],
+    this.notes = '',
   });
 
   /// Eski `type` alanı ile uyumluluk.
@@ -126,6 +150,14 @@ class League {
         'swissMatches': swissMatches,
         'legs': legs,
         'icon': icon,
+        'autoAdvance': autoAdvance,
+        'allowExtraTime': allowExtraTime,
+        'allowPenalties': allowPenalties,
+        'randomizeDraw': randomizeDraw,
+        'minRestHours': minRestHours,
+        'thirdPlaceMatch': thirdPlaceMatch,
+        'tieBreakers': tieBreakers.map((x) => x.name).toList(),
+        'notes': notes,
       };
 
   factory League.fromMap(Map<String, dynamic> m) => League(
@@ -140,20 +172,38 @@ class League {
         matches: ((m['matches'] as List?) ?? [])
             .map((x) => MatchGame.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
-        winPoints: m['winPoints'] ?? 3,
-        drawPoints: m['drawPoints'] ?? 1,
-        losePoints: m['losePoints'] ?? 0,
-        leagueColorValue: m['leagueColorValue'] ?? 0xFF0B6E4F,
+        winPoints: (m['winPoints'] as num?)?.toInt() ?? 3,
+        drawPoints: (m['drawPoints'] as num?)?.toInt() ?? 1,
+        losePoints: (m['losePoints'] as num?)?.toInt() ?? 0,
+        leagueColorValue:
+            (m['leagueColorValue'] as num?)?.toInt() ?? 0xFF0B6E4F,
         rankDefinitions: ((m['rankDefinitions'] as List?) ?? [])
             .map((x) => RankDefinition.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
         groups: ((m['groups'] as List?) ?? [])
             .map((x) => GroupInfo.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
-        qualifiersPerGroup: m['qualifiersPerGroup'] ?? 2,
-        swissMatches: m['swissMatches'] ?? 3,
-        legs: m['legs'] ?? 1,
+        qualifiersPerGroup:
+            (m['qualifiersPerGroup'] as num?)?.toInt() ?? 2,
+        swissMatches: (m['swissMatches'] as num?)?.toInt() ?? 3,
+        legs: (m['legs'] as num?)?.toInt() ?? 1,
         icon: (m['icon'] as String?) ?? '🏆',
+        autoAdvance: m['autoAdvance'] as bool? ?? true,
+        allowExtraTime: m['allowExtraTime'] as bool? ?? true,
+        allowPenalties: m['allowPenalties'] as bool? ?? true,
+        randomizeDraw: m['randomizeDraw'] as bool? ?? true,
+        minRestHours: (m['minRestHours'] as num?)?.toInt() ?? 48,
+        thirdPlaceMatch: m['thirdPlaceMatch'] as bool? ?? false,
+        tieBreakers: ((m['tieBreakers'] as List?) ?? [
+          'points',
+          'goalDifference',
+          'goalsFor',
+          'wins',
+          'headToHead',
+        ])
+            .map((x) => StandingsTieBreakerX.fromStored(x.toString()))
+            .toList(),
+        notes: (m['notes'] as String?) ?? '',
       );
 
   String toJson() => jsonEncode(toMap());

@@ -122,6 +122,7 @@ class LeagueTableItem {
   int goalsFor = 0;
   int goalsAgainst = 0;
   int points = 0;
+  int fairPlay = 0;
 
   int get goalDifference => goalsFor - goalsAgainst;
 

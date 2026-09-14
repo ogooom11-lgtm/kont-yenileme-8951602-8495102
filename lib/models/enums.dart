@@ -122,6 +122,35 @@ extension LeagueFormatX on LeagueFormat {
 
 enum MatchStatus { scheduled, live, finished }
 
+/// Sıralama eşitliklerinde uygulanacak resmi öncelik sırası.
+/// `headToHead` için mevcut karşılaşmaların puan/averajı kullanılır.
+enum StandingsTieBreaker {
+  points,
+  goalDifference,
+  goalsFor,
+  wins,
+  headToHead,
+  fairPlay,
+}
+
+extension StandingsTieBreakerX on StandingsTieBreaker {
+  String get label => switch (this) {
+        StandingsTieBreaker.points => 'Puan',
+        StandingsTieBreaker.goalDifference => 'Averaj',
+        StandingsTieBreaker.goalsFor => 'Atılan gol',
+        StandingsTieBreaker.wins => 'Galibiyet',
+        StandingsTieBreaker.headToHead => 'İkili averaj',
+        StandingsTieBreaker.fairPlay => 'Fair-play',
+      };
+
+  static StandingsTieBreaker fromStored(String? value) {
+    return StandingsTieBreaker.values.firstWhere(
+      (item) => item.name == value,
+      orElse: () => StandingsTieBreaker.goalDifference,
+    );
+  }
+}
+
 enum MatchStage {
   leagueRound,
   group,

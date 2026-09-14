@@ -31,6 +31,20 @@ class AppTheme {
         foregroundColor: scheme.onSurface,
       ),
       cardColor: isDark ? const Color(0xFF16241D) : Colors.white,
+      cardTheme: CardTheme(
+        elevation: isDark ? 0 : 1,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withOpacity(0.65),
+        space: 1,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
         indicatorColor: scheme.primary.withOpacity(0.18),
