@@ -114,12 +114,19 @@ class FixtureEngine {
     return planned;
   }
 
+  /// Sabit maçlı Swiss fikstürü.
+  ///
+  /// Sonuçlar girildikten sonra gerçek Swiss eşleşmelerini kurmak teorik
+  /// olarak mümkündür; ancak tüm fikstürü baştan göstermek isteyen kullanıcı
+  /// için burada her takımın birbiriyle en fazla bir kez karşılaştığı Berger
+  /// turlarını kullanıyoruz. Böylece aynı rakip iki kez üretilmez ve her takım
+  /// her turda en fazla bir maç oynar.
   List<PlannedMatch> generateSwiss({
     required List<String> teamIds,
     required int matchesPerTeam,
   }) {
     final one = roundRobinRounds(teamIds);
-    final take = matchesPerTeam.clamp(1, one.length);
+    final take = matchesPerTeam.clamp(1, one.length).toInt();
     final planned = <PlannedMatch>[];
     for (var w = 0; w < take; w++) {
       for (final p in one[w]) {
@@ -141,7 +148,7 @@ class FixtureEngine {
   }) {
     final ids = List<String>.from(teamIds);
     if (shuffle) ids.shuffle(_rng);
-    final count = groupCount.clamp(1, ids.length);
+    final count = groupCount.clamp(1, ids.length).toInt();
     final buckets = List.generate(count, (_) => <String>[]);
     // Yılan dağıtımı: A B C D D C B A ...
     var dir = 1;
@@ -192,6 +199,20 @@ class FixtureEngine {
       return (a.groupName ?? '').compareTo(b.groupName ?? '');
     });
     return planned;
+  }
+
+  List<PlannedMatch> generateThirdPlace({
+    required List<String> teamIds,
+  }) {
+    if (teamIds.length != 2) return [];
+    return [
+      PlannedMatch(
+        homeId: teamIds.first,
+        awayId: teamIds.last,
+        week: 1,
+        stage: MatchStage.thirdPlace,
+      ),
+    ];
   }
 
   List<PlannedMatch> generateKnockoutRound({
@@ -270,9 +291,19 @@ class FixtureEngine {
       slotsPerDay.add(18);
     }
 
+    final ordered = List<PlannedMatch>.from(planned)
+      ..sort((a, b) {
+        final week = a.week.compareTo(b.week);
+        if (week != 0) return week;
+        final stage = a.stage.index.compareTo(b.stage.index);
+        if (stage != 0) return stage;
+        final group = (a.groupName ?? '').compareTo(b.groupName ?? '');
+        if (group != 0) return group;
+        return a.leg.compareTo(b.leg);
+      });
     DateTime day = dateOnly(cfg.startDate);
     var slotIdx = 0;
-    var currentWeek = planned.first.week;
+    var currentWeek = ordered.first.week;
     final lastPlayed = <String, DateTime>{};
     final games = <MatchGame>[];
 
@@ -303,7 +334,7 @@ class FixtureEngine {
       return false;
     }
 
-    for (final p in planned) {
+    for (final p in ordered) {
       if (p.week != currentWeek) {
         day = dateOnly(day).add(Duration(days: cfg.daysBetweenRounds));
         slotIdx = 0;
@@ -367,8 +398,8 @@ class FixtureEngine {
 
   List<int> _dailySlots(ScheduleConfig cfg) {
     final hours = <int>[];
-    var start = cfg.startHour.clamp(0, 23);
-    var end = cfg.endHour.clamp(1, 24);
+    var start = cfg.startHour.clamp(0, 23).toInt();
+    var end = cfg.endHour.clamp(1, 24).toInt();
     if (end <= start) end = start + 2;
     for (var h = start; h < end; h += 2) {
       hours.add(h);
@@ -403,16 +434,24 @@ class FixtureEngine {
 
     if (format.hasGroups) {
       if (groupCount < 2) return 'En az 2 grup olmalı.';
-      if (teamIds.length < groupCount * 2) {
-        return 'Her grupta en az 2 takım olmalı. Takım ekleyin veya grup sayısını azaltın.';
+      if (groupCount > teamIds.length ~/ 2) {
+        return 'Her grupta en az 2 takım olmalı. Grup sayısını azaltın.';
       }
       if (format.hasKnockout) {
+        if (qualifiersPerGroup < 1) {
+          return 'Gruptan çıkan takım sayısı 1 veya daha fazla olmalı.';
+        }
+        if (qualifiersPerGroup != 2) {
+          return 'Gruplu eleme formatında gerçekçi eşleşme için her gruptan 2 takım çıkmalıdır.';
+        }
+        final maxPerGroup =
+            (teamIds.length + groupCount - 1) ~/ groupCount;
+        if (qualifiersPerGroup > maxPerGroup) {
+          return 'Gruptan çıkan takım sayısı, grup başına takım sayısını aşamaz.';
+        }
         final advancers = groupCount * qualifiersPerGroup;
         if (advancers < 2) {
           return 'Eleme turu için gruptan en az 2 takım çıkmalı.';
-        }
-        if (qualifiersPerGroup < 1) {
-          return 'Gruptan çıkan takım sayısı 1 veya daha fazla olmalı.';
         }
       }
     }

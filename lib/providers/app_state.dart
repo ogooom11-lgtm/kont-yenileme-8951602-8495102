@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,16 @@ class AppState extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   ThemeMode get themeMode => _themeMode;
 
+  // Kullanıcının uygulama davranışını turnuvalardan bağımsız özelleştirmesi.
+  bool _autoLiveSimulation = true;
+  bool _smartAutoAdvance = true;
+  bool _confirmResults = true;
+  bool _compactCards = false;
+  bool get autoLiveSimulation => _autoLiveSimulation;
+  bool get smartAutoAdvance => _smartAutoAdvance;
+  bool get confirmResults => _confirmResults;
+  bool get compactCards => _compactCards;
+
   final List<Team> _teams = [];
   List<Team> get teams => List.unmodifiable(_teams);
 
@@ -26,6 +37,7 @@ class AppState extends ChangeNotifier {
 
   Timer? _engineTimer;
   final Map<String, _LiveState> _live = {};
+  Future<void> _saveChain = Future<void>.value();
 
   bool _loaded = false;
   bool get loaded => _loaded;
@@ -34,45 +46,157 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     final data = await _storage.load();
     if (data != null) {
-      final tm = data['themeMode'] as String? ?? 'system';
+      try {
+        final tm = data['themeMode'] as String? ?? 'system';
       _themeMode = switch (tm) {
         'light' => ThemeMode.light,
         'dark' => ThemeMode.dark,
         _ => ThemeMode.system,
       };
+      _autoLiveSimulation = data['autoLiveSimulation'] as bool? ?? true;
+      _smartAutoAdvance = data['smartAutoAdvance'] as bool? ?? true;
+      _confirmResults = data['confirmResults'] as bool? ?? true;
+      _compactCards = data['compactCards'] as bool? ?? false;
       _teams
         ..clear()
-        ..addAll(((data['teams'] as List?) ?? [])
-            .map((e) => Team.fromMap(Map<String, dynamic>.from(e))));
+        ..addAll(((data['teams'] as List?) ?? []).whereType<Map>().map(
+            (e) => Team.fromMap(Map<String, dynamic>.from(e))));
       _leagues
         ..clear()
-        ..addAll(((data['leagues'] as List?) ?? [])
-            .map((e) => League.fromMap(Map<String, dynamic>.from(e))));
+        ..addAll(((data['leagues'] as List?) ?? []).whereType<Map>().map(
+            (e) => League.fromMap(Map<String, dynamic>.from(e))));
+      } catch (_) {
+        // Bozuk/yarım bir yedek uygulamayı açılmaz hale getirmemeli.
+        _teams.clear();
+        _leagues.clear();
+      }
     }
     _loaded = true;
     _startEngine();
     notifyListeners();
   }
 
-  Future<void> save() async {
-    await _storage.save({
+  Future<void> save() {
+    final snapshot = <String, dynamic>{
       'themeMode': switch (_themeMode) {
         ThemeMode.light => 'light',
         ThemeMode.dark => 'dark',
         _ => 'system',
       },
+      'autoLiveSimulation': _autoLiveSimulation,
+      'smartAutoAdvance': _smartAutoAdvance,
+      'confirmResults': _confirmResults,
+      'compactCards': _compactCards,
       'teams': _teams.map((e) => e.toMap()).toList(),
       'leagues': _leagues.map((e) => e.toMap()).toList(),
-    });
+    };
+    // Hızlı arka arkaya işlemler (gol, kart, ayar) eski snapshot'ın yeni
+    // verinin üzerine yazmasını engellemek için sıraya alınır.
+    _saveChain = _saveChain.then((_) => _storage.save(snapshot));
+    return _saveChain;
   }
 
   Future<void> _save() => save();
 
-  void toggleTheme() {
-    _themeMode =
-        _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+  void setThemeMode(ThemeMode mode) {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
     save();
     notifyListeners();
+  }
+
+  void toggleTheme() {
+    final next = switch (_themeMode) {
+      ThemeMode.system => ThemeMode.dark,
+      ThemeMode.dark => ThemeMode.light,
+      ThemeMode.light => ThemeMode.system,
+    };
+    setThemeMode(next);
+  }
+
+  void setAutoLiveSimulation(bool value) {
+    if (_autoLiveSimulation == value) return;
+    _autoLiveSimulation = value;
+    save();
+    notifyListeners();
+  }
+
+  void setSmartAutoAdvance(bool value) {
+    if (_smartAutoAdvance == value) return;
+    _smartAutoAdvance = value;
+    save();
+    notifyListeners();
+  }
+
+  void setConfirmResults(bool value) {
+    if (_confirmResults == value) return;
+    _confirmResults = value;
+    save();
+    notifyListeners();
+  }
+
+  void setCompactCards(bool value) {
+    if (_compactCards == value) return;
+    _compactCards = value;
+    save();
+    notifyListeners();
+  }
+
+  Future<void> clearAllData() async {
+    _live.clear();
+    _teams.clear();
+    _leagues.clear();
+    await save();
+    notifyListeners();
+  }
+
+  String exportJson() => jsonEncode({
+        'schemaVersion': 3,
+        'themeMode': switch (_themeMode) {
+          ThemeMode.light => 'light',
+          ThemeMode.dark => 'dark',
+          _ => 'system',
+        },
+        'autoLiveSimulation': _autoLiveSimulation,
+        'smartAutoAdvance': _smartAutoAdvance,
+        'confirmResults': _confirmResults,
+        'compactCards': _compactCards,
+        'teams': _teams.map((e) => e.toMap()).toList(),
+        'leagues': _leagues.map((e) => e.toMap()).toList(),
+      });
+
+  Future<String?> importJson(String raw) async {
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final importedTeams = ((data['teams'] as List?) ?? [])
+          .map((e) => Team.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+      final importedLeagues = ((data['leagues'] as List?) ?? [])
+          .map((e) => League.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+      final theme = data['themeMode'] as String?;
+      _themeMode = switch (theme) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+      _autoLiveSimulation = data['autoLiveSimulation'] as bool? ?? true;
+      _smartAutoAdvance = data['smartAutoAdvance'] as bool? ?? true;
+      _confirmResults = data['confirmResults'] as bool? ?? true;
+      _compactCards = data['compactCards'] as bool? ?? false;
+      _live.clear();
+      _teams
+        ..clear()
+        ..addAll(importedTeams);
+      _leagues
+        ..clear()
+        ..addAll(importedLeagues);
+      await save();
+      notifyListeners();
+      return null;
+    } catch (_) {
+      return 'Yedek dosyası geçersiz veya bozuk.';
+    }
   }
 
   @override
@@ -89,34 +213,38 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<void> addTeam({
+  Future<String?> addTeam({
     required String name,
     required String icon,
-    required double teamPower,
-    required List<Player> players,
-    required Coach coach,
-    required List<GoalKeeper> keepers,
   }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return 'Takım adı boş bırakılamaz.';
+    if (_teams.any((team) => team.name.trim().toLowerCase() == cleanName.toLowerCase())) {
+      return 'Bu isimde bir takım zaten var.';
+    }
     _teams.add(Team(
       id: newId(),
-      name: name.trim(),
-      icon: icon,
-      teamPower: teamPower,
-      players: players,
-      coach: coach,
-      keepers: keepers,
+      name: cleanName,
+      icon: icon.trim().isEmpty ? '⚽' : icon.trim(),
     ));
     await save();
     notifyListeners();
+    return null;
   }
 
-  Future<void> updateTeam(String teamId, String newName, String newIcon) async {
+  Future<String?> updateTeam(String teamId, String newName, String newIcon) async {
     final t = findTeam(teamId);
-    if (t == null) return;
-    t.name = newName.trim();
-    t.icon = newIcon;
+    if (t == null) return 'Takım bulunamadı.';
+    final cleanName = newName.trim();
+    if (cleanName.isEmpty) return 'Takım adı boş bırakılamaz.';
+    if (_teams.any((team) => team.id != teamId && team.name.trim().toLowerCase() == cleanName.toLowerCase())) {
+      return 'Bu isimde bir takım zaten var.';
+    }
+    t.name = cleanName;
+    t.icon = newIcon.trim().isEmpty ? '⚽' : newIcon.trim();
     await save();
     notifyListeners();
+    return null;
   }
 
   Future<String?> deleteTeam(String teamId) async {
@@ -128,30 +256,6 @@ class AppState extends ChangeNotifier {
     await save();
     notifyListeners();
     return null;
-  }
-
-  Future<void> addPlayerToTeam(String teamId, Player player) async {
-    findTeam(teamId)?.players.add(player);
-    await save();
-    notifyListeners();
-  }
-
-  Future<void> addKeeperToTeam(String teamId, GoalKeeper keeper) async {
-    findTeam(teamId)?.keepers.add(keeper);
-    await save();
-    notifyListeners();
-  }
-
-  Future<void> removePlayer(String teamId, String playerId) async {
-    findTeam(teamId)?.players.removeWhere((p) => p.id == playerId);
-    await save();
-    notifyListeners();
-  }
-
-  Future<void> removeKeeper(String teamId, String keeperId) async {
-    findTeam(teamId)?.keepers.removeWhere((k) => k.id == keeperId);
-    await save();
-    notifyListeners();
   }
 
   // ---------- Leagues ----------
@@ -176,6 +280,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateLeagueRules(
+    String leagueId, {
+    bool? autoAdvance,
+    bool? allowExtraTime,
+    bool? allowPenalties,
+    int? minRestHours,
+  }) async {
+    final league = findLeague(leagueId);
+    if (league == null) return;
+    if (autoAdvance != null) league.autoAdvance = autoAdvance;
+    if (allowExtraTime != null) league.allowExtraTime = allowExtraTime;
+    if (allowPenalties != null) league.allowPenalties = allowPenalties;
+    if (minRestHours != null) {
+      league.minRestHours = minRestHours.clamp(1, 240).toInt();
+    }
+    await save();
+    notifyListeners();
+  }
+
   Future<String?> createLeagueAndSchedule({
     required String title,
     required LeagueFormat format,
@@ -194,6 +317,20 @@ class AppState extends ChangeNotifier {
     int qualifiersPerGroup = 2,
     int swissMatches = 3,
     String icon = '🏆',
+    bool autoAdvance = true,
+    bool allowExtraTime = true,
+    bool allowPenalties = true,
+    bool randomizeDraw = true,
+    int minRestHours = 48,
+    bool thirdPlaceMatch = false,
+    List<StandingsTieBreaker> tieBreakers = const [
+      StandingsTieBreaker.points,
+      StandingsTieBreaker.goalDifference,
+      StandingsTieBreaker.goalsFor,
+      StandingsTieBreaker.wins,
+      StandingsTieBreaker.headToHead,
+    ],
+    String notes = '',
     // Eski imza uyumu
     LeagueType? type,
     int rounds = 2,
@@ -209,7 +346,14 @@ class AppState extends ChangeNotifier {
       };
     }
 
+    if (fmt.hasKnockout && !allowExtraTime && !allowPenalties) {
+      return 'Eleme formatında en az uzatma veya penaltı kuralı açık olmalıdır.';
+    }
     final ids = List<String>.from(teamIds);
+    final missing = ids.where((id) => findTeam(id) == null).toList();
+    if (missing.isNotEmpty) {
+      return 'Seçilen takımlardan bazıları artık mevcut değil. Takım listesini yenileyin.';
+    }
     final err = _engine.validate(
       format: fmt,
       teamIds: ids,
@@ -224,8 +368,11 @@ class AppState extends ChangeNotifier {
       startDate: startDate,
       startHour: startHour,
       endHour: endHour,
-      daysBetweenRounds: daysBetweenRounds.clamp(1, 14),
-      minGap: minGap,
+      daysBetweenRounds: daysBetweenRounds.clamp(1, 14).toInt(),
+      minGap: Duration(
+          hours: (minRestHours > 0 ? minRestHours : minGap.inHours)
+              .clamp(1, 240)
+              .toInt()),
       existingMatches: existing,
     );
 
@@ -247,6 +394,14 @@ class AppState extends ChangeNotifier {
       swissMatches: swissMatches,
       legs: fmt == LeagueFormat.leagueDouble ? 2 : 1,
       icon: icon,
+      autoAdvance: autoAdvance,
+      allowExtraTime: allowExtraTime,
+      allowPenalties: allowPenalties,
+      randomizeDraw: randomizeDraw,
+      minRestHours: minRestHours.clamp(1, 240).toInt(),
+      thirdPlaceMatch: thirdPlaceMatch,
+      tieBreakers: List.of(tieBreakers),
+      notes: notes.trim(),
     );
 
     List<PlannedMatch> planned = [];
@@ -270,6 +425,7 @@ class AppState extends ChangeNotifier {
         final groups = _engine.makeGroups(
           teamIds: ids,
           groupCount: groupCount,
+          shuffle: randomizeDraw,
         );
         league.groups = groups;
         planned = _engine.generateGroupMatches(groups: groups, legs: 1);
@@ -328,24 +484,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<void> setLineup({
-    required String matchId,
-    required bool isHome,
-    required List<String> playerIds,
-    required String? keeperId,
-  }) async {
-    final m = findMatchById(matchId);
-    if (m == null) return;
-    final lu = Lineup(playerIds: List.of(playerIds), keeperId: keeperId);
-    if (isHome) {
-      m.homeLineup = lu;
-    } else {
-      m.awayLineup = lu;
-    }
-    await save();
-    notifyListeners();
-  }
-
   bool _violatesForTeamAt({
     required String teamId,
     required DateTime candidateKickoff,
@@ -377,6 +515,12 @@ class AppState extends ChangeNotifier {
     }
     final lg = findLeague(m.leagueId);
     if (lg == null) return 'Lig bulunamadı.';
+    if (newStart.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
+      return 'Maç zamanı geçmişte olamaz.';
+    }
+    if (minGap == const Duration(hours: 48) && lg.minRestHours > 0) {
+      minGap = Duration(hours: lg.minRestHours);
+    }
 
     if (_violatesForTeamAt(
       teamId: m.homeTeamId,
@@ -402,14 +546,46 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  void _removeUnplayedFollowUps(League league, MatchGame source) {
+    if (!league.format.hasKnockout) return;
+    if (source.stage == MatchStage.group) {
+      league.matches.removeWhere((m) =>
+          m.stage.isKnockout &&
+          m.status == MatchStatus.scheduled &&
+          !m.finalized);
+      return;
+    }
+    const order = [
+      MatchStage.roundOf32,
+      MatchStage.roundOf16,
+      MatchStage.quarterFinal,
+      MatchStage.semiFinal,
+      MatchStage.finalMatch,
+    ];
+    final index = order.indexOf(source.stage);
+    if (index < 0 || index + 1 >= order.length) return;
+    final next = order[index + 1];
+    league.matches.removeWhere((m) =>
+        (m.stage == next ||
+            (next == MatchStage.finalMatch && m.stage == MatchStage.thirdPlace)) &&
+        m.status == MatchStatus.scheduled &&
+        !m.finalized);
+  }
+
   void undoMatchResult(String matchId) {
     final m = findMatchById(matchId);
     if (m == null || m.isBye) return;
+    final league = findLeague(m.leagueId);
+    if (league != null) _removeUnplayedFollowUps(league, m);
     m.status = MatchStatus.scheduled;
+    // Geri alınan, geçmişte kalmış maç bir sonraki saniyede tekrar canlıya
+    // dönmesin; kullanıcı bilinçli olarak yeni bir başlangıç saati seçebilir.
+    if (m.startTime == null || !m.startTime!.isAfter(DateTime.now())) {
+      m.startTime = DateTime.now().add(const Duration(minutes: 5));
+    }
     m.homeGoals = 0;
     m.awayGoals = 0;
     m.events.clear();
-    m.goalsByPlayer.clear();
     m.finalized = false;
     m.endTime = null;
     m.winnerTeamId = null;
@@ -421,7 +597,7 @@ class AppState extends ChangeNotifier {
     save();
   }
 
-  Future<void> setMatchResult(
+  Future<String?> setMatchResult(
     String matchId,
     int homeScore,
     int awayScore, {
@@ -430,20 +606,57 @@ class AppState extends ChangeNotifier {
     bool usedPenalties = false,
   }) async {
     final m = findMatchById(matchId);
-    if (m == null) return;
-    m.homeGoals = homeScore.clamp(0, 99);
-    m.awayGoals = awayScore.clamp(0, 99);
+    if (m == null) return 'Maç bulunamadı.';
+    if (m.isBye) return 'Bay geçişinin sonucu değiştirilemez.';
+    if (m.status == MatchStatus.finished) {
+      return 'Bu maç zaten tamamlandı. Düzeltmek için önce geri alın.';
+    }
+    if (homeScore < 0 || awayScore < 0 || homeScore > 99 || awayScore > 99) {
+      return 'Skor 0 ile 99 arasında olmalıdır.';
+    }
+    if (homePenalties < 0 || awayPenalties < 0) {
+      return 'Penaltı sayısı negatif olamaz.';
+    }
+    final league = findLeague(m.leagueId);
+    if (league == null) return 'Lig bulunamadı.';
+    if (usedPenalties && !m.stage.isKnockout) {
+      return 'Lig ve grup maçlarında penaltı atışı kullanılamaz.';
+    }
+    if (usedPenalties && homePenalties == awayPenalties) {
+      return 'Penaltı atışlarında kazanan belli olmalıdır.';
+    }
+    final isLastLeg = m.tieId == null ||
+        m.leg >= league.matches
+            .where((other) => other.tieId == m.tieId)
+            .map((other) => other.leg)
+            .fold<int>(0, (a, b) => a > b ? a : b);
+    final aggregateDraw = _aggregateIsDrawAfter(m, homeScore, awayScore);
+    if (usedPenalties && (!isLastLeg || !aggregateDraw)) {
+      return 'Penaltı atışı yalnızca son ayakta toplam skor eşitse kullanılabilir.';
+    }
+    if (m.stage.isKnockout && isLastLeg && aggregateDraw && !usedPenalties) {
+      return league.allowPenalties
+          ? 'Eleme maçında eşitlik varsa penaltı atışını girin.'
+          : 'Bu turnuvada eşitlik çözülemiyor; penaltı kuralını açın.';
+    }
+
+    // Manuel sonuç, simülasyonun ürettiği olayları sessizce taşımamalı.
+    // Olaylar ayrı ayrı girilmediyse skor resmî kaynaktır.
+    m.events.clear();
+    m.homeGoals = homeScore;
+    m.awayGoals = awayScore;
     m.status = MatchStatus.finished;
     m.endTime = DateTime.now();
     m.usedPenalties = usedPenalties;
-    m.homePenalties = homePenalties;
-    m.awayPenalties = awayPenalties;
+    m.homePenalties = usedPenalties ? homePenalties : 0;
+    m.awayPenalties = usedPenalties ? awayPenalties : 0;
+    _live.remove(m.id);
     _resolveWinner(m);
     m.finalized = true;
-    _applyPostMatchAdjustments(m);
     _tryAdvanceCompetition(m.leagueId);
     notifyListeners();
     await save();
+    return null;
   }
 
   Future<void> finishMatchAndFinalize({required String matchId}) async {
@@ -452,19 +665,34 @@ class AppState extends ChangeNotifier {
     if (m.finalized) return;
     m.status = MatchStatus.finished;
     m.endTime ??= DateTime.now();
-    final byPlayer = <String, int>{};
-    for (final ev in m.events) {
-      if (ev.playerId == null || ev.playerId!.isEmpty) continue;
-      if (ev.type == EventType.goal || ev.type == EventType.penaltyGoal) {
-        byPlayer.update(ev.playerId!, (v) => v + 1, ifAbsent: () => 1);
-      }
-    }
-    m.goalsByPlayer = byPlayer;
     _resolveWinner(m);
     m.finalized = true;
     _tryAdvanceCompetition(m.leagueId);
     await save();
     notifyListeners();
+  }
+
+  bool _aggregateIsDrawAfter(MatchGame match, int homeScore, int awayScore) {
+    if (match.tieId == null) return homeScore == awayScore;
+    final league = findLeague(match.leagueId);
+    if (league == null) return homeScore == awayScore;
+    final legs = league.matches.where((m) => m.tieId == match.tieId).toList();
+    if (legs.isEmpty) return homeScore == awayScore;
+    final first = legs.first;
+    var firstTotal = 0;
+    var secondTotal = 0;
+    for (final leg in legs) {
+      final home = leg.id == match.id ? homeScore : leg.homeGoals;
+      final away = leg.id == match.id ? awayScore : leg.awayGoals;
+      if (leg.homeTeamId == first.homeTeamId) {
+        firstTotal += home;
+        secondTotal += away;
+      } else {
+        firstTotal += away;
+        secondTotal += home;
+      }
+    }
+    return firstTotal == secondTotal;
   }
 
   void _resolveWinner(MatchGame m) {
@@ -530,10 +758,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Gruplar bittiğinde veya eleme turu kapandığında sonraki turu üretir.
-  void _tryAdvanceCompetition(String leagueId) {
+  void _tryAdvanceCompetition(String leagueId, {bool force = false}) {
     final lg = findLeague(leagueId);
     if (lg == null) return;
     if (!lg.format.hasKnockout) return;
+    if (!force && (!_smartAutoAdvance || !lg.autoAdvance)) return;
 
     if (lg.format.hasGroups) {
       final groupMatches =
@@ -594,7 +823,7 @@ class AppState extends ChangeNotifier {
       startHour: 18,
       endHour: 22,
       daysBetweenRounds: 3,
-      minGap: const Duration(hours: 60),
+      minGap: Duration(hours: lg.minRestHours),
       existingMatches: _leagues.expand((l) => l.matches).toList(),
     );
     final games = _engine.schedule(
@@ -663,6 +892,24 @@ class AppState extends ChangeNotifier {
       twoLegged: two,
       isFinalSingle: true,
     );
+    if (lg.thirdPlaceMatch && current == MatchStage.semiFinal) {
+      final losers = <String>[];
+      final seenLoserTies = <String>{};
+      for (final match in currentMatches) {
+        if (match.isBye) continue;
+        if (match.tieId != null && !seenLoserTies.add(match.tieId!)) continue;
+        final winner = match.winnerTeamId;
+        if (winner == null) continue;
+        final firstLeg = match.tieId == null
+            ? match
+            : lg.matches.firstWhere((item) => item.tieId == match.tieId && item.leg == 1);
+        final loser = firstLeg.homeTeamId == winner
+            ? firstLeg.awayTeamId
+            : firstLeg.homeTeamId;
+        losers.add(loser);
+      }
+      planned.addAll(_engine.generateThirdPlace(teamIds: losers));
+    }
     final last = lg.matches
         .map((m) => m.startTime)
         .whereType<DateTime>()
@@ -672,7 +919,7 @@ class AppState extends ChangeNotifier {
       startHour: 18,
       endHour: 22,
       daysBetweenRounds: 3,
-      minGap: const Duration(hours: 60),
+      minGap: Duration(hours: lg.minRestHours),
       existingMatches: _leagues.expand((l) => l.matches).toList(),
     );
     final games = _engine.schedule(
@@ -690,7 +937,7 @@ class AppState extends ChangeNotifier {
     final lg = findLeague(leagueId);
     if (lg == null) return 'Lig bulunamadı.';
     final before = lg.matches.length;
-    _tryAdvanceCompetition(leagueId);
+    _tryAdvanceCompetition(leagueId, force: true);
     if (lg.matches.length == before) {
       return 'Sonraki tur henüz üretilemez. Açık maçları bitirin.';
     }
@@ -699,27 +946,12 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<void> recordKeeperSave({
-    required String matchId,
-    required bool byHomeKeeper,
-  }) async {
-    final m = findMatchById(matchId);
-    if (m == null || m.status != MatchStatus.live) return;
-    if (byHomeKeeper) {
-      m.homeSaves += 1;
-    } else {
-      m.awaySaves += 1;
-    }
-    await save();
-    notifyListeners();
-  }
-
   int liveMinuteFor(String matchId) {
     final ls = _live[matchId];
-    if (ls != null) return ls.currentMinute.clamp(0, 90);
+    if (ls != null) return ls.currentMinute.clamp(0, 90).toInt();
     final m = findMatchById(matchId);
     if (m == null || m.startTime == null) return 0;
-    return DateTime.now().difference(m.startTime!).inSeconds.clamp(0, 90);
+    return DateTime.now().difference(m.startTime!).inSeconds.clamp(0, 90).toInt();
   }
 
   Future<void> recordAiGoal({
@@ -729,14 +961,14 @@ class AppState extends ChangeNotifier {
   }) async {
     final m = findMatchById(matchId);
     if (m == null || m.status != MatchStatus.live) return;
-    final minute = (minuteOverride ?? liveMinuteFor(matchId)).clamp(0, 90);
+    final minute = (minuteOverride ?? liveMinuteFor(matchId)).clamp(0, 90).toInt();
     _registerGoal(m, isHome: isHome, minute: minute);
     final ls = _live[matchId];
     if (ls != null) {
       if (isHome) {
-        ls.cooldownHomeUntilMinute = (minute + 2).clamp(0, 90);
+        ls.cooldownHomeUntilMinute = (minute + 2).clamp(0, 90).toInt();
       } else {
-        ls.cooldownAwayUntilMinute = (minute + 2).clamp(0, 90);
+        ls.cooldownAwayUntilMinute = (minute + 2).clamp(0, 90).toInt();
       }
     }
     await save();
@@ -749,30 +981,6 @@ class AppState extends ChangeNotifier {
     _engineTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
 
-  void _ensureAutoLineupsIfMissing(MatchGame m) {
-    Lineup autoForTeam(Team t) {
-      final playersSorted = List<Player>.from(t.players)
-        ..sort((a, b) => b.power.compareTo(a.power));
-      final starters = playersSorted.take(11).map((e) => e.id).toList();
-      String? kId;
-      if (t.keepers.isNotEmpty) {
-        final ks = List<GoalKeeper>.from(t.keepers)
-          ..sort((a, b) => b.keepingPower.compareTo(a.keepingPower));
-        kId = ks.first.id;
-      }
-      return Lineup(playerIds: starters, keeperId: kId);
-    }
-
-    if (m.homeLineup == null) {
-      final ht = findTeam(m.homeTeamId);
-      if (ht != null) m.homeLineup = autoForTeam(ht);
-    }
-    if (m.awayLineup == null) {
-      final at = findTeam(m.awayTeamId);
-      if (at != null) m.awayLineup = autoForTeam(at);
-    }
-  }
-
   void _tick() {
     final now = DateTime.now();
     var changed = false;
@@ -782,16 +990,20 @@ class AppState extends ChangeNotifier {
         final st = m.startTime;
         if (st == null || m.isBye) continue;
 
-        if (m.status == MatchStatus.scheduled && now.isAfter(st)) {
-          _ensureAutoLineupsIfMissing(m);
+        final withinKickoffWindow =
+            !now.isBefore(st) && now.difference(st) <= const Duration(hours: 2);
+        if (_autoLiveSimulation &&
+            m.status == MatchStatus.scheduled &&
+            withinKickoffWindow) {
           m.status = MatchStatus.live;
-          _live[m.id] = _LiveState(startedAt: now, currentMinute: 0);
+          _live[m.id] = _LiveState(startedAt: st, currentMinute: 0);
           changed = true;
         }
 
         if (m.status == MatchStatus.live) {
+          final restoredMinute = now.difference(st).inSeconds.clamp(0, 89).toInt();
           final ls = _live[m.id] ??
-              _LiveState(startedAt: now, currentMinute: 0);
+              _LiveState(startedAt: st, currentMinute: restoredMinute);
           _live[m.id] = ls;
           final nextMinuteAt =
               ls.nextTickAt ?? now.add(const Duration(seconds: 1));
@@ -802,7 +1014,7 @@ class AppState extends ChangeNotifier {
             _maybeScore(m, minute: ls.currentMinute, live: ls);
             if (ls.currentMinute >= 90) {
               m.status = MatchStatus.finished;
-              _applyPostMatchAdjustments(m);
+              _simulateShootoutIfRequired(m);
               finishMatchAndFinalize(matchId: m.id);
               _live.remove(m.id);
               changed = true;
@@ -814,18 +1026,46 @@ class AppState extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  double _effectiveStrength(Team t) {
-    if (t.players.isEmpty) {
-      return t.teamPower +
-          t.coach.iqPower +
-          (t.keepers.isNotEmpty ? t.keepers.first.keepingPower * .3 : 0);
+  void _simulateShootoutIfRequired(MatchGame match) {
+    if (!match.stage.isKnockout) return;
+    final league = findLeague(match.leagueId);
+    if (league == null || (!league.allowPenalties && !league.allowExtraTime)) return;
+    final lastLeg = match.tieId == null ||
+        match.leg >= league.matches
+            .where((other) => other.tieId == match.tieId)
+            .map((other) => other.leg)
+            .fold<int>(0, (a, b) => a > b ? a : b);
+    if (!lastLeg || !_aggregateIsDrawAfter(match, match.homeGoals, match.awayGoals)) {
+      return;
     }
-    final avgPlayers =
-        t.players.fold<double>(0, (s, p) => s + p.power) / t.players.length;
-    final bestKeeper = t.keepers.isEmpty
-        ? 0.0
-        : t.keepers.map((k) => k.keepingPower).reduce(max);
-    return t.teamPower + (avgPlayers * 0.5) + t.coach.iqPower + (bestKeeper * 0.3);
+    if (!league.allowPenalties && league.allowExtraTime) {
+      if (_rng.nextBool()) {
+        _registerGoal(match, isHome: true, minute: 90);
+      } else {
+        _registerGoal(match, isHome: false, minute: 90);
+      }
+      return;
+    }
+    var home = 0;
+    var away = 0;
+    while (home == away) {
+      home = 3 + _rng.nextInt(3);
+      away = 3 + _rng.nextInt(3);
+    }
+    match.usedPenalties = true;
+    match.homePenalties = home;
+    match.awayPenalties = away;
+  }
+
+  double _effectiveStrength(Team team) {
+    // Takımlar artık yalnızca ad ve ikonla tanımlanır. Simülasyonun tamamen
+    // rastgele değil, aynı takımla tekrarlandığında tutarlı olması için ad
+    // tabanlı küçük bir fark kullanıyoruz.
+    var hash = 0;
+    for (final code in team.name.codeUnits) {
+      hash = (hash * 31 + code) & 0x7fffffff;
+    }
+    return 4.7 + (hash % 7) / 10.0;
   }
 
   void _maybeScore(MatchGame m,
@@ -834,8 +1074,8 @@ class AppState extends ChangeNotifier {
     final away = findTeam(m.awayTeamId);
     if (home == null || away == null) return;
 
-    final sh = _effectiveStrength(home).clamp(1.0, 20.0);
-    final sa = _effectiveStrength(away).clamp(1.0, 20.0);
+    final sh = _effectiveStrength(home).clamp(1.0, 20.0).toDouble();
+    final sa = _effectiveStrength(away).clamp(1.0, 20.0).toDouble();
     final total = sh + sa;
     const mu = 2.6 / 90.0;
     var ph = mu * (sh / total);
@@ -858,63 +1098,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _registerGoal(MatchGame m, {required bool isHome, required int minute}) {
+  void _registerGoal(MatchGame match, {required bool isHome, required int minute}) {
     if (isHome) {
-      m.homeGoals += 1;
+      match.homeGoals += 1;
     } else {
-      m.awayGoals += 1;
+      match.awayGoals += 1;
     }
-    String? scorerId;
-    final team = findTeam(isHome ? m.homeTeamId : m.awayTeamId);
-    final lineup = isHome ? m.homeLineup : m.awayLineup;
-    if (team != null) {
-      var pool = <String>[];
-      if (lineup != null && lineup.playerIds.isNotEmpty) {
-        pool = lineup.playerIds;
-      } else {
-        pool = team.players.map((p) => p.id).toList();
-      }
-      if (pool.isNotEmpty) {
-        scorerId = pool[_rng.nextInt(pool.length)];
-      }
-    }
-    m.events.add(MatchEvent(
+    match.events.add(MatchEvent(
       minute: minute,
-      teamId: isHome ? m.homeTeamId : m.awayTeamId,
+      teamId: isHome ? match.homeTeamId : match.awayTeamId,
       isHome: isHome,
-      playerId: scorerId,
       type: EventType.goal,
     ));
-  }
-
-  void _applyPostMatchAdjustments(MatchGame m) {
-    if (m.isBye) return;
-    final ht = findTeam(m.homeTeamId);
-    final at = findTeam(m.awayTeamId);
-    if (ht == null || at == null) return;
-
-    if (m.homeGoals > m.awayGoals) {
-      ht.teamPower = (ht.teamPower + 0.02).clamp(1.0, 8.0);
-      at.teamPower = (at.teamPower - 0.02).clamp(1.0, 8.0);
-    } else if (m.awayGoals > m.homeGoals) {
-      at.teamPower = (at.teamPower + 0.02).clamp(1.0, 8.0);
-      ht.teamPower = (ht.teamPower - 0.02).clamp(1.0, 8.0);
-    } else {
-      ht.teamPower = (ht.teamPower + 0.005).clamp(1.0, 8.0);
-      at.teamPower = (at.teamPower + 0.005).clamp(1.0, 8.0);
-    }
-
-    void buffScorers(Team t, String tid) {
-      for (final e in m.events.where((e) => e.teamId == tid && e.playerId != null)) {
-        final idx = t.players.indexWhere((p) => p.id == e.playerId);
-        if (idx >= 0) {
-          t.players[idx].power = (t.players[idx].power + 0.05).clamp(1.0, 8.0);
-        }
-      }
-    }
-
-    buffScorers(ht, ht.id);
-    buffScorers(at, at.id);
   }
 
   TeamStats statsForTeam(String teamId) {
@@ -931,7 +1126,13 @@ class AppState extends ChangeNotifier {
         final opp = isHome ? m.awayGoals : m.homeGoals;
         gf += my;
         ga += opp;
-        if (my > opp) {
+        if (m.stage.isKnockout && m.tieId == null && m.usedPenalties && m.winnerTeamId != null) {
+          if (m.winnerTeamId == teamId) {
+            win++;
+          } else {
+            lose++;
+          }
+        } else if (my > opp) {
           win++;
         } else if (my == opp) {
           draw++;

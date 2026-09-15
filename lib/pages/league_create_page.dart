@@ -12,6 +12,8 @@ class LeagueAddPage extends StatelessWidget {
   Widget build(BuildContext context) => const LeagueCreatePage();
 }
 
+/// Turnuva kurulumunun kısa ve anlaşılır akışı:
+/// kimlik → format ve takımlar → fikstür kuralları.
 class LeagueCreatePage extends StatefulWidget {
   const LeagueCreatePage({super.key});
 
@@ -20,141 +22,76 @@ class LeagueCreatePage extends StatefulWidget {
 }
 
 class _LeagueCreatePageState extends State<LeagueCreatePage> {
-  final _page = PageController();
+  final _pageController = PageController();
+  final _titleController = TextEditingController();
   int _step = 0;
-  static const _total = 4;
+  bool _saving = false;
 
-  final _titleCtrl = TextEditingController();
-  Color _color = const Color(0xFF0B6E4F);
-  String _icon = '🏆';
   LeagueFormat _format = LeagueFormat.leagueDouble;
+  String _icon = '🏆';
+  Color _color = AppTheme.seed;
+  final List<String> _selected = [];
+  String _query = '';
 
+  DateTime? _start;
+  RangeValues _hours = const RangeValues(16, 22);
+  int _roundGap = 7;
+  int _minRest = 48;
   int _winPoints = 3;
   int _drawPoints = 1;
   int _losePoints = 0;
   int _groupCount = 2;
   int _qualifiers = 2;
   int _swissMatches = 3;
+  bool _randomizeDraw = true;
+  bool _autoAdvance = true;
+  bool _extraTime = true;
+  bool _penalties = true;
+  bool _thirdPlace = false;
+  String _notes = '';
 
-  final List<String> _selected = [];
-  String _query = '';
-
-  List<RankDefinition> _ranks = [];
-  int _rankMin = 1;
-  int _rankMax = 4;
-  String _rankLabel = '';
-  Color _rankColor = Colors.green;
-
-  DateTime? _start;
-  int _daysBetween = 3;
-  RangeValues _hours = const RangeValues(16, 22);
-
-  bool _creating = false;
-
-  static const _icons = ['🏆', '⚽', '🌍', '⚡', '🌟', '🔥', '🛡️', '🥇'];
+  static const _icons = ['🏆', '⚽', '🌍', '🔥', '⚡', '🌟', '🥇', '🛡️'];
   static const _colors = [
-    Color(0xFF0B6E4F),
-    Color(0xFF1565C0),
-    Color(0xFFB71C1C),
-    Color(0xFF6A1B9A),
-    Color(0xFFE65100),
-    Color(0xFF004D40),
-    Color(0xFF1A237E),
-    Color(0xFF212121),
+    Color(0xFF0B6E4F), Color(0xFF1565C0), Color(0xFFB71C1C),
+    Color(0xFF6A1B9A), Color(0xFFE65100), Color(0xFF142C3D),
   ];
 
   @override
   void dispose() {
-    _page.dispose();
-    _titleCtrl.dispose();
+    _pageController.dispose();
+    _titleController.dispose();
     super.dispose();
-  }
-
-  Future<void> _go(int next) async {
-    if (next > _step && !_validateStep(_step)) return;
-    setState(() => _step = next.clamp(0, _total - 1));
-    await _page.animateToPage(
-      _step,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  bool _validateStep(int step) {
-    switch (step) {
-      case 0:
-        if (_titleCtrl.text.trim().isEmpty) {
-          _toast('Turnuva adı girin.');
-          return false;
-        }
-        return true;
-      case 1:
-        return true;
-      case 2:
-        if (_selected.length < _format.minTeams) {
-          _toast('Bu format için en az ${_format.minTeams} takım seçin.');
-          return false;
-        }
-        if (_format == LeagueFormat.swiss && _selected.length.isOdd) {
-          _toast('Swiss formatında takım sayısı çift olmalı.');
-          return false;
-        }
-        if (_format.hasGroups && _selected.length < _groupCount * 2) {
-          _toast('Her grupta en az 2 takım olmalı.');
-          return false;
-        }
-        return true;
-      default:
-        return true;
-    }
-  }
-
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final last = _step == _total - 1;
+    final labels = ['Kimlik', 'Format ve takımlar', 'Kurallar'];
+    final last = _step == labels.length - 1;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Yeni Turnuva'),
+        title: const Text('Yeni yarışma'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(8),
-          child: LinearProgressIndicator(
-            value: (_step + 1) / _total,
-            minHeight: 4,
-            color: _color,
-            backgroundColor: _color.withOpacity(0.15),
-          ),
+          child: LinearProgressIndicator(value: (_step + 1) / labels.length, color: _color),
         ),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
             child: Row(
               children: [
-                Text('Adım ${_step + 1}/$_total',
-                    style: Theme.of(context).textTheme.labelLarge),
+                Text('Adım ${_step + 1}/${labels.length}', style: Theme.of(context).textTheme.labelLarge),
                 const Spacer(),
-                Text(
-                  const ['Kimlik', 'Format', 'Takımlar', 'Takvim'][_step],
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+                Text(labels[_step], style: const TextStyle(fontWeight: FontWeight.w800)),
               ],
             ),
           ),
           Expanded(
             child: PageView(
-              controller: _page,
+              controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _stepIdentity(),
-                _stepFormat(),
-                _stepTeams(),
-                _stepSchedule(),
-              ],
+              children: [_identityStep(), _formatAndTeamsStep(), _rulesStep()],
             ),
           ),
           SafeArea(
@@ -162,34 +99,18 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Row(
                 children: [
-                  if (_step > 0)
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _go(_step - 1),
-                        child: const Text('Geri'),
-                      ),
-                    ),
-                  if (_step > 0) const SizedBox(width: 12),
+                  if (_step > 0) ...[
+                    Expanded(child: OutlinedButton(onPressed: () => _go(_step - 1), child: const Text('Geri'))),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
                     flex: 2,
                     child: FilledButton(
                       style: FilledButton.styleFrom(backgroundColor: _color),
-                      onPressed: _creating
-                          ? null
-                          : () {
-                              if (last) {
-                                _create();
-                              } else {
-                                _go(_step + 1);
-                              }
-                            },
-                      child: _creating
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(last ? 'Turnuvayı Oluştur' : 'Devam'),
+                      onPressed: _saving ? null : () => last ? _create() : _go(_step + 1),
+                      child: _saving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(last ? 'Yarışmayı oluştur' : 'Devam et'),
                     ),
                   ),
                 ],
@@ -201,512 +122,260 @@ class _LeagueCreatePageState extends State<LeagueCreatePage> {
     );
   }
 
-  Widget _stepIdentity() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        TextField(
-          controller: _titleCtrl,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: 'Turnuva adı',
-            hintText: 'Örn: Süper Lig 2026',
-            prefixIcon: Icon(Icons.emoji_events_outlined),
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text('Renk', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _colors
-              .map((c) => GestureDetector(
-                    onTap: () => setState(() => _color = c),
-                    child: CircleAvatar(
-                      backgroundColor: c,
-                      radius: 18,
-                      child: _color == c
-                          ? const Icon(Icons.check, color: Colors.white, size: 18)
-                          : null,
-                    ),
-                  ))
-              .toList(),
-        ),
-        const SizedBox(height: 18),
-        const Text('İkon', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: _icons
-              .map((e) => ChoiceChip(
-                    label: Text(e, style: const TextStyle(fontSize: 20)),
-                    selected: _icon == e,
-                    onSelected: (_) => setState(() => _icon = e),
-                  ))
-              .toList(),
-        ),
-      ],
-    );
+  Future<void> _go(int next) async {
+    if (next > _step && !_validate(_step)) return;
+    setState(() => _step = next.clamp(0, 2).toInt());
+    await _pageController.animateToPage(_step, duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
-  Widget _stepFormat() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text('Gerçekçi format seçin',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                )),
-        const SizedBox(height: 4),
-        Text('Her format kendi fikstür ve ilerleme kurallarıyla çalışır.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 12),
-        ...LeagueFormat.values.map((f) {
-          final sel = _format == f;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Material(
-              color: sel
-                  ? _color.withOpacity(0.12)
-                  : Theme.of(context).cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: sel ? _color : Theme.of(context).dividerColor,
-                  width: sel ? 2 : 1,
-                ),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () => setState(() => _format = f),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        sel ? Icons.radio_button_checked : Icons.radio_button_off,
-                        color: sel ? _color : Colors.grey,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(f.title,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800, fontSize: 15)),
-                            const SizedBox(height: 2),
-                            Text(f.subtitle, style: const TextStyle(fontSize: 13)),
-                            const SizedBox(height: 4),
-                            Text(f.example,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: _color,
-                                  fontWeight: FontWeight.w600,
-                                )),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-        if (_format.usesPoints) ...[
-          const SizedBox(height: 8),
-          const Text('Puanlama', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _numBox('Galibiyet', _winPoints, (v) => _winPoints = v),
-              const SizedBox(width: 8),
-              _numBox('Beraberlik', _drawPoints, (v) => _drawPoints = v),
-              const SizedBox(width: 8),
-              _numBox('Mağlubiyet', _losePoints, (v) => _losePoints = v),
-            ],
-          ),
-        ],
-        if (_format.hasGroups) ...[
-          const SizedBox(height: 16),
-          Text('Grup sayısı: $_groupCount',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          Slider(
-            value: _groupCount.toDouble(),
-            min: 2,
-            max: 8,
-            divisions: 6,
-            label: '$_groupCount grup',
-            activeColor: _color,
-            onChanged: (v) => setState(() => _groupCount = v.toInt()),
-          ),
-          if (_format.hasKnockout) ...[
-            Text('Gruptan çıkan: $_qualifiers',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            Slider(
-              value: _qualifiers.toDouble(),
-              min: 1,
-              max: 4,
-              divisions: 3,
-              label: '$_qualifiers takım',
-              activeColor: _color,
-              onChanged: (v) => setState(() => _qualifiers = v.toInt()),
-            ),
-          ],
-        ],
-        if (_format == LeagueFormat.swiss) ...[
-          const SizedBox(height: 8),
-          Text('Her takım $_swissMatches maç oynar',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          Slider(
-            value: _swissMatches.toDouble(),
-            min: 1,
-            max: 15,
-            divisions: 14,
-            label: '$_swissMatches maç',
-            activeColor: _color,
-            onChanged: (v) => setState(() => _swissMatches = v.toInt()),
-          ),
-        ],
-        if (_format.usesPoints) ...[
-          const SizedBox(height: 12),
-          const Text('Tablo renkleri (opsiyonel)',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ActionChip(
-                label: const Text('ŞL / Avrupa / Düşme'),
-                onPressed: () {
-                  setState(() {
-                    _ranks = [
-                      RankDefinition(
-                          minRank: 1,
-                          maxRank: 4,
-                          colorValue: 0xFF1B5E20,
-                          label: 'Şampiyonlar Ligi'),
-                      RankDefinition(
-                          minRank: 5,
-                          maxRank: 6,
-                          colorValue: 0xFF0D47A1,
-                          label: 'Avrupa Ligi'),
-                      RankDefinition(
-                          minRank: 18,
-                          maxRank: 20,
-                          colorValue: 0xFFB71C1C,
-                          label: 'Küme düşme'),
-                    ];
-                  });
-                },
-              ),
-              ActionChip(
-                label: const Text('Dünya Kupası'),
-                onPressed: () {
-                  setState(() {
-                    _ranks = [
-                      RankDefinition(
-                          minRank: 1,
-                          maxRank: 2,
-                          colorValue: 0xFF1B5E20,
-                          label: 'Eleme turu'),
-                    ];
-                  });
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Etiket',
-                  ),
-                  onChanged: (v) => _rankLabel = v,
-                ),
-              ),
-              const SizedBox(width: 8),
-              DropdownButton<int>(
-                value: _rankMin,
-                items: [
-                  for (var i = 1; i <= 20; i++)
-                    DropdownMenuItem(value: i, child: Text('$i'))
-                ],
-                onChanged: (v) => setState(() => _rankMin = v ?? 1),
-              ),
-              const Text(' - '),
-              DropdownButton<int>(
-                value: _rankMax,
-                items: [
-                  for (var i = 1; i <= 20; i++)
-                    DropdownMenuItem(value: i, child: Text('$i'))
-                ],
-                onChanged: (v) => setState(() => _rankMax = v ?? 1),
-              ),
-              IconButton(
-                onPressed: () {
-                  if (_rankLabel.trim().isEmpty) return;
-                  setState(() {
-                    _ranks.add(RankDefinition(
-                      minRank: _rankMin,
-                      maxRank: _rankMax,
-                      colorValue: _rankColor.value,
-                      label: _rankLabel.trim(),
-                    ));
-                  });
-                },
-                icon: const Icon(Icons.add_circle),
-              ),
-            ],
-          ),
-          ..._ranks.map((r) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                    radius: 8, backgroundColor: Color(r.colorValue)),
-                title: Text(r.label),
-                subtitle: Text('${r.minRank}–${r.maxRank}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => setState(() => _ranks.remove(r)),
-                ),
-              )),
-        ],
-      ],
-    );
+  bool _validate(int step) {
+    if (step == 0) {
+      if (_titleController.text.trim().isEmpty) {
+        _toast('Yarışma adı girin.');
+        return false;
+      }
+    }
+    if (step == 1) {
+      if (_selected.length < _format.minTeams) {
+        _toast('${_format.title} için en az ${_format.minTeams} takım seçin.');
+        return false;
+      }
+      if (_format == LeagueFormat.swiss && (_selected.length.isOdd || _swissMatches >= _selected.length)) {
+        _toast('Sabit maç formatında takım sayısı çift, maç sayısı takım sayısından küçük olmalı.');
+        return false;
+      }
+      if (_format.hasGroups && _selected.length < _groupCount * 2) {
+        _toast('Her grupta en az iki takım olmalı.');
+        return false;
+      }
+      if (_format.hasGroups && _format.hasKnockout && _qualifiers != 2) {
+        _toast('Gruplu elemede her gruptan iki takım çıkmalıdır.');
+        return false;
+      }
+    }
+    if (step == 2 && _start == null) {
+      _toast('Başlangıç tarihi seçin.');
+      return false;
+    }
+    return true;
   }
 
-  Widget _numBox(String label, int value, void Function(int) onChanged) {
-    return Expanded(
-      child: Column(
+  void _toast(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+
+  Widget _identityStep() => ListView(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          DropdownButton<int>(
-            isExpanded: true,
-            value: value,
-            items: [0, 1, 2, 3, 4, 5]
-                .map((e) => DropdownMenuItem(value: e, child: Text('$e')))
-                .toList(),
-            onChanged: (v) => setState(() => onChanged(v ?? value)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stepTeams() {
-    final state = context.watch<AppState>();
-    final filtered = state.teams
-        .where((t) => t.name.toLowerCase().contains(_query.toLowerCase()))
-        .toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Takım ara',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
+          Center(
+            child: Container(
+              width: 108,
+              height: 108,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: _color.withOpacity(0.12), shape: BoxShape.circle, border: Border.all(color: _color.withOpacity(0.3), width: 2)),
+              child: Text(_icon, style: const TextStyle(fontSize: 50)),
             ),
-            onChanged: (v) => setState(() => _query = v),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text('${_selected.length} seçili  ·  min ${_format.minTeams}',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _selected.length < 2
-                    ? null
-                    : () => setState(() => _selected.shuffle()),
-                icon: const Icon(Icons.shuffle, size: 18),
-                label: const Text('Kura'),
-              ),
-            ],
+          const SizedBox(height: 24),
+          TextField(
+            controller: _titleController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Yarışma adı', hintText: 'Örn: Al Wakrah Kupası 2026', prefixIcon: Icon(Icons.emoji_events_outlined)),
+            onChanged: (_) => setState(() {}),
           ),
+          const SizedBox(height: 22),
+          const Text('Renk', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 12, children: _colors.map((item) => GestureDetector(
+            onTap: () => setState(() => _color = item),
+            child: CircleAvatar(backgroundColor: item, radius: 19, child: _color == item ? const Icon(Icons.check, color: Colors.white, size: 18) : null),
+          )).toList()),
+          const SizedBox(height: 22),
+          const Text('İkon', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: _icons.map((item) => ChoiceChip(label: Text(item, style: const TextStyle(fontSize: 21)), selected: _icon == item, onSelected: (_) => setState(() => _icon = item))).toList()),
+          const SizedBox(height: 24),
+          Card(color: _color.withOpacity(0.08), child: const Padding(padding: EdgeInsets.all(16), child: Text('Önce kimliğini oluştur. Sonraki adımda KONT, seçtiğin takımlara göre doğru fikstürü ve turnuva haritasını hazırlayacak.'))),
+        ],
+      );
+
+  Widget _formatAndTeamsStep() {
+    final state = context.watch<AppState>();
+    final query = _query.trim().toLowerCase();
+    final visible = state.teams.where((team) => team.name.toLowerCase().contains(query)).toList();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      children: [
+        Text('Formatı seç', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 8),
+        ...LeagueFormat.values.map((format) => _formatCard(format)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Text('${_selected.length} takım seçili  ·  minimum ${_format.minTeams}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const Spacer(),
+            TextButton(onPressed: state.teams.isEmpty ? null : () => setState(() => _selected..clear()..addAll(state.teams.map((team) => team.id))), child: const Text('Tümünü seç')),
+          ],
         ),
+        TextField(decoration: const InputDecoration(hintText: 'Takım ara', prefixIcon: Icon(Icons.search), isDense: true), onChanged: (value) => setState(() => _query = value)),
+        const SizedBox(height: 8),
         if (_selected.isNotEmpty)
           SizedBox(
             height: 42,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                for (var i = 0; i < _selected.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InputChip(
-                      label: Text(
-                        '${i + 1}. ${state.findTeam(_selected[i])?.name ?? "?"}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      onDeleted: () =>
-                          setState(() => _selected.removeAt(i)),
-                    ),
-                  ),
-              ],
-            ),
+            child: ListView(scrollDirection: Axis.horizontal, children: [for (final id in _selected) Padding(padding: const EdgeInsets.only(right: 6), child: InputChip(label: Text(state.findTeam(id)?.name ?? '?'), onDeleted: () => setState(() => _selected.remove(id))))]),
           ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (_, i) {
-              final t = filtered[i];
-              final sel = _selected.contains(t.id);
-              return CheckboxListTile(
-                value: sel,
-                secondary: Text(t.icon, style: const TextStyle(fontSize: 22)),
-                title: Text(t.name),
-                subtitle: Text('Güç ${t.teamPower.toStringAsFixed(1)}'),
-                onChanged: (v) {
-                  setState(() {
-                    if (v == true) {
-                      _selected.add(t.id);
-                    } else {
-                      _selected.remove(t.id);
-                    }
-                  });
-                },
-              );
-            },
-          ),
-        ),
+        const Divider(height: 20),
+        if (visible.isEmpty)
+          const Padding(padding: EdgeInsets.all(20), child: Text('Takım yok. Önce Takımlar sekmesinden en az iki takım ekleyin.', textAlign: TextAlign.center))
+        else
+          ...visible.map((team) => CheckboxListTile(
+            value: _selected.contains(team.id),
+            secondary: Text(team.icon, style: const TextStyle(fontSize: 24)),
+            title: Text(team.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: const Text('Sadece isim ve ikonla yönetilir'),
+            onChanged: (value) => setState(() {
+              if (value == true) {
+                if (!_selected.contains(team.id)) _selected.add(team.id);
+              } else {
+                _selected.remove(team.id);
+              }
+            }),
+          )),
       ],
     );
   }
 
-  Widget _stepSchedule() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.event),
-          title: const Text('Başlangıç tarihi'),
-          subtitle: Text(_start == null
-              ? 'Seçilmedi'
-              : '${_start!.day}.${_start!.month}.${_start!.year}'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () async {
-            final now = DateTime.now();
-            final d = await showDatePicker(
-              context: context,
-              initialDate: _start ?? now,
-              firstDate: DateTime(now.year - 1),
-              lastDate: DateTime(now.year + 6),
-            );
-            if (d != null) setState(() => _start = d);
-          },
-        ),
-        const Divider(),
-        Text(
-          'Maç saatleri: ${_hours.start.toInt()}:00 – ${_hours.end.toInt()}:00',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        RangeSlider(
-          values: _hours,
-          min: 8,
-          max: 24,
-          divisions: 16,
-          labels: RangeLabels(
-            '${_hours.start.toInt()}:00',
-            '${_hours.end.toInt()}:00',
-          ),
-          activeColor: _color,
-          onChanged: (v) {
-            if (v.end - v.start >= 2) setState(() => _hours = v);
-          },
-        ),
-        const SizedBox(height: 8),
-        Text('Turlar arası $_daysBetween gün',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        Slider(
-          value: _daysBetween.toDouble(),
-          min: 1,
-          max: 7,
-          divisions: 6,
-          label: '$_daysBetween gün',
-          activeColor: _color,
-          onChanged: (v) => setState(() => _daysBetween = v.toInt()),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          color: AppTheme.seed.withOpacity(0.08),
+  Widget _formatCard(LeagueFormat format) {
+    final selected = _format == format;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: selected ? _color.withOpacity(0.12) : Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: selected ? _color : Theme.of(context).dividerColor, width: selected ? 2 : 1)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => setState(() => _format = format),
           child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
+            padding: const EdgeInsets.all(13),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Özet',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                Text('• ${_titleCtrl.text.trim().isEmpty ? "Adsız" : _titleCtrl.text}'),
-                Text('• ${_format.title}'),
-                Text('• ${_selected.length} takım'),
-                if (_format.hasGroups) Text('• $_groupCount grup'),
-                if (_start != null)
-                  Text('• Başlangıç ${_start!.day}.${_start!.month}.${_start!.year}'),
+                Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? _color : Colors.grey),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(format.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 3),
+                  Text(format.subtitle, style: const TextStyle(fontSize: 12.5)),
+                  const SizedBox(height: 3),
+                  Text(format.example, style: TextStyle(color: _color, fontSize: 11, fontWeight: FontWeight.w700)),
+                ])),
               ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
+  Widget _rulesStep() => ListView(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 30),
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.event_outlined),
+            title: const Text('Başlangıç tarihi', style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(_start == null ? 'Seçilmedi' : '${_start!.day}.${_start!.month}.${_start!.year}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final now = DateTime.now();
+              final date = await showDatePicker(context: context, initialDate: _start ?? now, firstDate: DateTime(now.year - 1), lastDate: DateTime(now.year + 6));
+              if (date != null) setState(() => _start = date);
+            },
+          ),
+          const Divider(),
+          Text('Maç saatleri: ${_hours.start.toInt()}:00 – ${_hours.end.toInt()}:00', style: const TextStyle(fontWeight: FontWeight.w800)),
+          RangeSlider(values: _hours, min: 8, max: 24, divisions: 16, labels: RangeLabels('${_hours.start.toInt()}:00', '${_hours.end.toInt()}:00'), activeColor: _color, onChanged: (value) { if (value.end - value.start >= 2) setState(() => _hours = value); }),
+          Text('Haftalar/turlar arası $_roundGap gün', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Slider(value: _roundGap.toDouble(), min: 1, max: 14, divisions: 13, label: '$_roundGap gün', activeColor: _color, onChanged: (value) => setState(() => _roundGap = value.toInt())),
+          Text('Takım başına minimum dinlenme $_minRest saat', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Slider(value: _minRest.toDouble(), min: 24, max: 96, divisions: 12, label: '$_minRest saat', activeColor: _color, onChanged: (value) => setState(() => _minRest = value.toInt())),
+          if (_format.usesPoints) ...[
+            const SizedBox(height: 8),
+            const Text('Puanlama', style: TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Row(children: [_scoreSelect('Galibiyet', _winPoints, (value) => _winPoints = value), const SizedBox(width: 8), _scoreSelect('Beraberlik', _drawPoints, (value) => _drawPoints = value), const SizedBox(width: 8), _scoreSelect('Mağlubiyet', _losePoints, (value) => _losePoints = value)]),
+          ],
+          if (_format.hasGroups) ...[
+            const SizedBox(height: 10),
+            Text('Grup sayısı: $_groupCount', style: const TextStyle(fontWeight: FontWeight.w800)),
+            Slider(value: _groupCount.toDouble(), min: 2, max: 8, divisions: 6, activeColor: _color, onChanged: (value) => setState(() => _groupCount = value.toInt())),
+            if (_format.hasKnockout) Text('Gruptan çıkan: $_qualifiers takım', style: const TextStyle(fontWeight: FontWeight.w800)),
+            if (_format.hasKnockout) Text('Eleme turu için her gruptan 2 takım çıkar.', style: TextStyle(color: _color, fontWeight: FontWeight.w700)),
+          ],
+          if (_format == LeagueFormat.swiss) ...[
+            const SizedBox(height: 8),
+            Text('Takım başına $_swissMatches sabit maç', style: const TextStyle(fontWeight: FontWeight.w800)),
+            Slider(value: _swissMatches.toDouble(), min: 1, max: 15, divisions: 14, activeColor: _color, onChanged: (value) => setState(() => _swissMatches = value.toInt())),
+          ],
+          if (_format.hasKnockout)
+            Card(
+              child: Column(children: [
+                SwitchListTile.adaptive(title: const Text('Turları otomatik ilerlet'), subtitle: const Text('Maçlar tamamlanınca sonraki turu hazırla'), value: _autoAdvance, onChanged: (value) => setState(() => _autoAdvance = value)),
+                SwitchListTile.adaptive(title: const Text('Uzatma'), value: _extraTime, onChanged: (value) => setState(() => _extraTime = value)),
+                SwitchListTile.adaptive(title: const Text('Penaltı atışları'), value: _penalties, onChanged: (value) => setState(() => _penalties = value)),
+                SwitchListTile.adaptive(title: const Text('Üçüncülük maçı'), subtitle: const Text('Yarı final kaybedenlerini karşılaştır'), value: _thirdPlace, onChanged: (value) => setState(() => _thirdPlace = value)),
+              ]),
+            ),
+          if (_format.hasGroups)
+            SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('Grupları kura ile karıştır'), value: _randomizeDraw, onChanged: (value) => setState(() => _randomizeDraw = value)),
+          const SizedBox(height: 8),
+          TextField(maxLines: 2, decoration: const InputDecoration(labelText: 'Not (opsiyonel)', prefixIcon: Icon(Icons.notes_outlined)), onChanged: (value) => _notes = value),
+          const SizedBox(height: 14),
+          Card(color: _color.withOpacity(0.09), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Hazır mısın?', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 8),
+            Text('“${_titleController.text.isEmpty ? 'Yeni yarışma' : _titleController.text}” · ${_format.title} · ${_selected.length} takım'),
+            Text(_format.hasKnockout ? 'Kupa haritası otomatik oluşacak.' : 'Fikstür ve puan tablosu otomatik oluşacak.'),
+          ]))),
+        ],
+      );
+
+  Widget _scoreSelect(String label, int value, void Function(int) onChanged) => Expanded(child: Column(children: [Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)), DropdownButton<int>(isExpanded: true, value: value, items: [0, 1, 2, 3, 4, 5].map((item) => DropdownMenuItem(value: item, child: Text('$item'))).toList(), onChanged: (newValue) => setState(() => onChanged(newValue ?? value))) ]));
+
   Future<void> _create() async {
-    if (!_validateStep(2)) {
-      await _go(2);
-      return;
-    }
-    if (_start == null) {
-      _toast('Başlangıç tarihi seçin.');
-      return;
-    }
-    setState(() => _creating = true);
-    final err = await context.read<AppState>().createLeagueAndSchedule(
-          title: _titleCtrl.text,
-          format: _format,
-          teamIds: List.of(_selected),
-          startDate: _start!,
-          startHour: _hours.start.toInt(),
-          endHour: _hours.end.toInt(),
-          daysBetweenRounds: _daysBetween,
-          minGap: Duration(hours: (_daysBetween * 24) - 8),
-          winPoints: _winPoints,
-          drawPoints: _drawPoints,
-          losePoints: _losePoints,
-          leagueColorValue: _color.value,
-          rankDefinitions: _ranks,
-          groupCount: _groupCount,
-          qualifiersPerGroup: _qualifiers,
-          swissMatches: _swissMatches,
-          icon: _icon,
-        );
+    if (!_validate(1) || !_validate(2)) return;
+    setState(() => _saving = true);
+    final error = await context.read<AppState>().createLeagueAndSchedule(
+      title: _titleController.text,
+      format: _format,
+      teamIds: List.of(_selected),
+      startDate: _start!,
+      startHour: _hours.start.toInt(),
+      endHour: _hours.end.toInt(),
+      daysBetweenRounds: _roundGap,
+      minGap: Duration(hours: _minRest),
+      winPoints: _winPoints,
+      drawPoints: _drawPoints,
+      losePoints: _losePoints,
+      leagueColorValue: _color.value,
+      groupCount: _groupCount,
+      qualifiersPerGroup: _qualifiers,
+      swissMatches: _swissMatches,
+      icon: _icon,
+      autoAdvance: _autoAdvance,
+      allowExtraTime: _extraTime,
+      allowPenalties: _penalties,
+      randomizeDraw: _randomizeDraw,
+      minRestHours: _minRest,
+      thirdPlaceMatch: _thirdPlace,
+      notes: _notes,
+    );
     if (!mounted) return;
-    setState(() => _creating = false);
-    if (err != null) {
-      _toast(err);
+    setState(() => _saving = false);
+    if (error != null) {
+      _toast(error);
       return;
     }
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Turnuva oluşturuldu. Fikstür hazır.')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Yarışma oluşturuldu. Fikstür ve kupa haritası hazır.')));
   }
 }
