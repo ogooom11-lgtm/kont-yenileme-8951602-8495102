@@ -5,6 +5,7 @@ import '../models/league.dart';
 import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../services/standings_service.dart';
+import '../widgets/competition_bracket.dart';
 import '../widgets/match_card.dart';
 
 class LeagueDetailsPage extends StatelessWidget {
@@ -117,56 +118,114 @@ class LeagueDetailsPage extends StatelessWidget {
 
   void _settings(BuildContext context, AppState state, League league) {
     final ctrl = TextEditingController(text: league.title);
+    var autoAdvance = league.autoAdvance;
+    var extraTime = league.allowExtraTime;
+    var penalties = league.allowPenalties;
+    var seededDraw = league.seededKnockoutDraw;
+    var restHours = league.minRestHours;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 8, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(labelText: 'Turnuva adı'),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () {
-                if (ctrl.text.trim().isEmpty) return;
-                state.updateLeagueName(league.id, ctrl.text);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Kaydet'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: ctx,
-                  builder: (c) => AlertDialog(
-                    title: const Text('Silinsin mi?'),
-                    content: const Text('Tüm maçlar kalıcı olarak silinir.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(c, false),
-                          child: const Text('İptal')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(c, true),
-                          child: const Text('Sil')),
-                    ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 8, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  decoration: const InputDecoration(labelText: 'Turnuva adı'),
+                ),
+                const SizedBox(height: 8),
+                if (league.format.hasKnockout) ...[
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Turları otomatik ilerlet'),
+                    value: autoAdvance,
+                    onChanged: (v) => setSheetState(() => autoAdvance = v),
                   ),
-                );
-                if (ok == true) {
-                  Navigator.pop(ctx);
-                  Navigator.pop(context);
-                  await state.deleteLeague(league.id);
-                }
-              },
-              child: const Text('Turnuvayı sil',
-                  style: TextStyle(color: Colors.red)),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Uzatma kuralı'),
+                    value: extraTime,
+                    onChanged: (v) => setSheetState(() => extraTime = v),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Penaltı atışları'),
+                    value: penalties,
+                    onChanged: (v) => setSheetState(() => penalties = v),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Seribaşı yerleşimi'),
+                    subtitle: const Text('Yeni turlarda takım sırasını koru'),
+                    value: seededDraw,
+                    onChanged: (v) => setSheetState(() => seededDraw = v),
+                  ),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Minimum dinlenme: $restHours saat',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                Slider(
+                  value: restHours.toDouble().clamp(24.0, 96.0).toDouble(),
+                  min: 24,
+                  max: 96,
+                  divisions: 12,
+                  label: '$restHours saat',
+                  onChanged: (v) => setSheetState(() => restHours = v.toInt()),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () async {
+                    if (ctrl.text.trim().isEmpty) return;
+                    await state.updateLeagueName(league.id, ctrl.text);
+                    await state.updateLeagueRules(
+                      league.id,
+                      autoAdvance: autoAdvance,
+                      allowExtraTime: extraTime,
+                      allowPenalties: penalties,
+                      minRestHours: restHours,
+                      seededKnockoutDraw: seededDraw,
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: const Text('Ayarları kaydet'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: ctx,
+                      builder: (c) => AlertDialog(
+                        title: const Text('Silinsin mi?'),
+                        content: const Text('Tüm maçlar kalıcı olarak silinir.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: const Text('İptal')),
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, true),
+                              child: const Text('Sil')),
+                        ],
+                      ),
+                    );
+                    if (ok == true && ctx.mounted) {
+                      Navigator.pop(ctx);
+                      Navigator.pop(context);
+                      await state.deleteLeague(league.id);
+                    }
+                  },
+                  child: const Text('Turnuvayı sil',
+                      style: TextStyle(color: Colors.red)),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -219,6 +278,26 @@ class _OverviewTab extends StatelessWidget {
             ),
           ),
         ),
+        if (league.notes.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.notes_outlined),
+              title: const Text('Turnuva notu'),
+              subtitle: Text(league.notes),
+            ),
+          ),
+        ],
+        if (league.knockoutEntryStages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.alt_route_outlined),
+              title: const Text('Özel giriş turları'),
+              subtitle: Text('${league.knockoutEntryStages.length} takım kendi başlangıç turundan kuraya katılıyor.'),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         const Text('Sıradaki maç',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
@@ -232,6 +311,13 @@ class _OverviewTab extends StatelessWidget {
               child: Center(child: Text('Planlı maç kalmadı.')),
             ),
           ),
+        if (league.format.hasKnockout) ...[
+          const SizedBox(height: 18),
+          const Text('Turnuva yolu', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 4),
+          const Text('Kim hangi turda? Harita sonuçlarla birlikte canlı güncellenir.'),
+          CompetitionBracket(league: league),
+        ],
       ],
     );
   }
@@ -359,41 +445,19 @@ class _CupTab extends StatelessWidget {
   const _CupTab({required this.league});
 
   @override
-  Widget build(BuildContext context) {
-    final ko = league.matches.where((m) => m.stage.isKnockout && !m.isBye).toList()
-      ..sort((a, b) => (a.startTime ?? DateTime.now())
-          .compareTo(b.startTime ?? DateTime.now()));
-    if (ko.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Eleme turu henüz oluşmadı. Grup maçları bitince otomatik üretilir.',
-            textAlign: TextAlign.center,
+  Widget build(BuildContext context) => ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          CompetitionBracket(league: league),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Text(
+              'Kartlara dokunarak maç detayını, skoru ve turu geçen takımı açabilirsin.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
-        ),
-      );
-    }
-    final stages = <MatchStage, List<MatchGame>>{};
-    for (final m in ko) {
-      stages.putIfAbsent(m.stage, () => []).add(m);
-    }
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        for (final e in stages.entries) ...[
-          Text(e.key.label(),
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 8),
-          ...e.value.map((m) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: MatchCard(match: m),
-              )),
-          const SizedBox(height: 8),
         ],
-      ],
-    );
-  }
+      );
 }
 
 class _StatsTab extends StatelessWidget {
@@ -403,39 +467,67 @@ class _StatsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final goals = <String, int>{};
-    for (final m in league.matches) {
-      if (m.status != MatchStatus.finished) continue;
-      m.scorerMap.forEach((k, v) => goals.update(k, (x) => x + v, ifAbsent: () => v));
+    final finished = league.matches.where((m) => m.status == MatchStatus.finished && !m.isBye).toList();
+    final goals = finished.fold<int>(0, (sum, match) => sum + match.homeGoals + match.awayGoals);
+    final wins = <String, int>{};
+    for (final match in finished) {
+      final winner = match.winnerTeamId ?? (match.homeGoals == match.awayGoals
+          ? null
+          : match.homeGoals > match.awayGoals
+              ? match.homeTeamId
+              : match.awayTeamId);
+      if (winner != null) wins.update(winner, (value) => value + 1, ifAbsent: () => 1);
     }
-    if (goals.isEmpty) {
-      return const Center(child: Text('Henüz gol istatistiği yok.'));
-    }
-    final sorted = goals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final ranking = wins.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
-    String nameOf(String id) {
-      for (final t in state.teams) {
-        for (final p in t.players) {
-          if (p.id == id) return '${t.icon}  ${p.fullName}';
-        }
-      }
-      return 'Bilinmeyen';
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: sorted.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (_, i) => ListTile(
-        leading: CircleAvatar(
-          backgroundColor: i == 0 ? const Color(0xFFE8B923) : Colors.grey.shade300,
-          child: Text('${i + 1}'),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            _Metric('Tamamlanan', '${finished.length}', Icons.check_circle_outline, Colors.green),
+            const SizedBox(width: 8),
+            _Metric('Toplam gol', '$goals', Icons.sports_soccer, Colors.orange),
+            const SizedBox(width: 8),
+            _Metric('Takım', '${league.teamIds.length}', Icons.groups_outlined, Colors.blue),
+          ],
         ),
-        title: Text(nameOf(sorted[i].key)),
-        trailing: Text('${sorted[i].value} gol',
-            style: const TextStyle(fontWeight: FontWeight.w800)),
-      ),
+        const SizedBox(height: 20),
+        const Text('En çok kazananlar', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 8),
+        if (ranking.isEmpty)
+          const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Sonuçlar girildiğinde turnuva performansı burada görünür.')))
+        else
+          ...ranking.take(8).toList().asMap().entries.map((entry) {
+            final team = state.findTeam(entry.value.key);
+            return Card(child: ListTile(
+              leading: CircleAvatar(backgroundColor: entry.key == 0 ? const Color(0xFFE8B923) : null, child: Text(team?.icon ?? '⚽')),
+              title: Text(team?.name ?? '?', style: const TextStyle(fontWeight: FontWeight.w700)),
+              trailing: Text('${entry.value.value} galibiyet', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ));
+          }),
+        const SizedBox(height: 18),
+        if (league.format.hasTable) ...[
+          const Text('Tablo', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+          _table(context, StandingsService.build(league: league, findTeam: state.findTeam), league),
+        ],
+      ],
     );
   }
+}
+
+class _Metric extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  const _Metric(this.label, this.value, this.icon, this.color);
+
+  @override
+  Widget build(BuildContext context) => Expanded(child: Container(
+    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
+    child: Column(children: [Icon(icon, color: color, size: 20), const SizedBox(height: 4), Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 17)), Text(label, style: TextStyle(color: color, fontSize: 10))]),
+  ));
 }

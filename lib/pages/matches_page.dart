@@ -15,6 +15,7 @@ class MatchesPage extends StatefulWidget {
 class _MatchesPageState extends State<MatchesPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  String _query = '';
 
   @override
   void initState() {
@@ -32,8 +33,15 @@ class _MatchesPageState extends State<MatchesPage>
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final all = <MatchGame>[];
+    final query = _query.trim().toLowerCase();
     for (final lg in state.leagues) {
-      all.addAll(lg.matches.where((m) => !m.isBye));
+      for (final match in lg.matches.where((m) => !m.isBye)) {
+        final home = state.findTeam(match.homeTeamId)?.name.toLowerCase() ?? '';
+        final away = state.findTeam(match.awayTeamId)?.name.toLowerCase() ?? '';
+        if (query.isEmpty || home.contains(query) || away.contains(query) || lg.title.toLowerCase().contains(query)) {
+          all.add(match);
+        }
+      }
     }
     all.sort((a, b) => (a.startTime ?? DateTime.now())
         .compareTo(b.startTime ?? DateTime.now()));
@@ -53,12 +61,35 @@ class _MatchesPageState extends State<MatchesPage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: Column(
         children: [
-          _list(filter(MatchStatus.scheduled)),
-          _list(filter(MatchStatus.live)),
-          _list(filter(MatchStatus.finished).reversed.toList()),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Takım veya turnuva ara',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () => setState(() => _query = ''),
+                        icon: const Icon(Icons.close),
+                      ),
+                isDense: true,
+              ),
+              onChanged: (value) => setState(() => _query = value),
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _list(filter(MatchStatus.scheduled)),
+                _list(filter(MatchStatus.live)),
+                _list(filter(MatchStatus.finished).reversed.toList()),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
 import 'leagues_page.dart';
+import 'insights_page.dart';
 import 'live_matches_page.dart';
 import 'matches_page.dart';
 import 'teams_page.dart';
@@ -29,6 +30,7 @@ class _HomeShellState extends State<HomeShell> {
       LeaguesPage(),
       MatchesPage(),
       TeamsPage(),
+      InsightsPage(),
       LiveMatchesPage(),
     ];
 
@@ -52,6 +54,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.groups_outlined),
             selectedIcon: Icon(Icons.groups),
             label: 'Takımlar',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights),
+            label: 'Analiz',
           ),
           NavigationDestination(
             icon: Badge(

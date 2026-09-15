@@ -46,4 +46,35 @@ void main() {
     final planned = engine.generateLeague(teamIds: ['a', 'b', 'c', 'd'], legs: 2);
     expect(planned.length, 12);
   });
+
+  test('custom knockout entry stages can feed a later round', () {
+    final entries = <String, MatchStage>{
+      for (var i = 0; i < 16; i++) 'early$i': MatchStage.roundOf32,
+      for (var i = 0; i < 8; i++) 'direct$i': MatchStage.roundOf16,
+    };
+    final error = engine.validate(
+      format: LeagueFormat.cupSingle,
+      teamIds: entries.keys.toList(),
+      groupCount: 2,
+      qualifiersPerGroup: 2,
+      swissMatches: 3,
+      knockoutEntryStages: entries,
+    );
+    expect(error, isNull);
+  });
+
+  test('custom knockout entry stages reject an incomplete bracket', () {
+    final entries = <String, MatchStage>{
+      for (var i = 0; i < 4; i++) 'team$i': MatchStage.roundOf32,
+    };
+    final error = engine.validate(
+      format: LeagueFormat.cupSingle,
+      teamIds: entries.keys.toList(),
+      groupCount: 2,
+      qualifiersPerGroup: 2,
+      swissMatches: 3,
+      knockoutEntryStages: entries,
+    );
+    expect(error, isNotNull);
+  });
 }
