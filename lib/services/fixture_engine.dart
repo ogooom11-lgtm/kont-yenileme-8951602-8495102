@@ -114,12 +114,19 @@ class FixtureEngine {
     return planned;
   }
 
+  /// Sabit maçlı Swiss fikstürü.
+  ///
+  /// Sonuçlar girildikten sonra gerçek Swiss eşleşmelerini kurmak teorik
+  /// olarak mümkündür; ancak tüm fikstürü baştan göstermek isteyen kullanıcı
+  /// için burada her takımın birbiriyle en fazla bir kez karşılaştığı Berger
+  /// turlarını kullanıyoruz. Böylece aynı rakip iki kez üretilmez ve her takım
+  /// her turda en fazla bir maç oynar.
   List<PlannedMatch> generateSwiss({
     required List<String> teamIds,
     required int matchesPerTeam,
   }) {
     final one = roundRobinRounds(teamIds);
-    final take = matchesPerTeam.clamp(1, one.length);
+    final take = matchesPerTeam.clamp(1, one.length).toInt();
     final planned = <PlannedMatch>[];
     for (var w = 0; w < take; w++) {
       for (final p in one[w]) {
@@ -141,7 +148,7 @@ class FixtureEngine {
   }) {
     final ids = List<String>.from(teamIds);
     if (shuffle) ids.shuffle(_rng);
-    final count = groupCount.clamp(1, ids.length);
+    final count = groupCount.clamp(1, ids.length).toInt();
     final buckets = List.generate(count, (_) => <String>[]);
     // Yılan dağıtımı: A B C D D C B A ...
     var dir = 1;
@@ -194,20 +201,56 @@ class FixtureEngine {
     return planned;
   }
 
+  List<PlannedMatch> generateThirdPlace({
+    required List<String> teamIds,
+  }) {
+    if (teamIds.length != 2) return [];
+    return [
+      PlannedMatch(
+        homeId: teamIds.first,
+        awayId: teamIds.last,
+        week: 1,
+        stage: MatchStage.thirdPlace,
+      ),
+    ];
+  }
+
   List<PlannedMatch> generateKnockoutRound({
     required List<String> teamIds,
     required bool twoLegged,
     required bool isFinalSingle,
+    MatchStage? stageOverride,
+    int? targetWinners,
+    bool seeded = false,
+    bool shuffle = false,
   }) {
-    final ids = List<String>.from(teamIds);
-    if (ids.length < 2) return [];
+    if (teamIds.isEmpty) return [];
+    var ids = List<String>.from(teamIds);
+    if (shuffle && !seeded) ids.shuffle(_rng);
+    if (seeded && ids.length == nextPowerOfTwo(ids.length)) {
+      ids = _seededBracketOrder(ids);
+    }
 
     final pow2 = nextPowerOfTwo(ids.length);
-    final byes = pow2 - ids.length;
-    final byeTeams = ids.take(byes).toList();
-    final playing = ids.skip(byes).toList();
+    final stage = stageOverride ?? MatchStageX.fromTeamCount(pow2);
+    if (ids.length == 1) {
+      return [
+        PlannedMatch(
+          homeId: ids.first,
+          awayId: 'BYE',
+          week: 1,
+          stage: stage,
+        ),
+      ];
+    }
 
-    final stage = MatchStageX.fromTeamCount(pow2);
+    final defaultWinners = pow2 ~/ 2;
+    final winnersTarget = (targetWinners ?? defaultWinners)
+        .clamp((ids.length + 1) ~/ 2, ids.length)
+        .toInt();
+    final byeCount = (winnersTarget * 2 - ids.length).clamp(0, ids.length).toInt();
+    final byeTeams = ids.take(byeCount).toList();
+    final playing = ids.skip(byeCount).toList();
     final planned = <PlannedMatch>[];
     var week = 1;
 
@@ -253,6 +296,22 @@ class FixtureEngine {
     return planned;
   }
 
+  List<String> _seededBracketOrder(List<String> ids) {
+    final size = ids.length;
+    var positions = <int>[1];
+    var bracketSize = 1;
+    while (bracketSize < size) {
+      final next = <int>[];
+      for (final position in positions) {
+        next.add(position);
+        next.add(bracketSize * 2 + 1 - position);
+      }
+      positions = next;
+      bracketSize *= 2;
+    }
+    return positions.map((position) => ids[position - 1]).toList();
+  }
+
   List<String> firstRoundByeWinners(List<PlannedMatch> round) =>
       round.where((m) => m.awayId == 'BYE').map((m) => m.homeId).toList();
 
@@ -270,9 +329,19 @@ class FixtureEngine {
       slotsPerDay.add(18);
     }
 
+    final ordered = List<PlannedMatch>.from(planned)
+      ..sort((a, b) {
+        final week = a.week.compareTo(b.week);
+        if (week != 0) return week;
+        final stage = a.stage.index.compareTo(b.stage.index);
+        if (stage != 0) return stage;
+        final group = (a.groupName ?? '').compareTo(b.groupName ?? '');
+        if (group != 0) return group;
+        return a.leg.compareTo(b.leg);
+      });
     DateTime day = dateOnly(cfg.startDate);
     var slotIdx = 0;
-    var currentWeek = planned.first.week;
+    var currentWeek = ordered.first.week;
     final lastPlayed = <String, DateTime>{};
     final games = <MatchGame>[];
 
@@ -303,7 +372,7 @@ class FixtureEngine {
       return false;
     }
 
-    for (final p in planned) {
+    for (final p in ordered) {
       if (p.week != currentWeek) {
         day = dateOnly(day).add(Duration(days: cfg.daysBetweenRounds));
         slotIdx = 0;
@@ -367,8 +436,8 @@ class FixtureEngine {
 
   List<int> _dailySlots(ScheduleConfig cfg) {
     final hours = <int>[];
-    var start = cfg.startHour.clamp(0, 23);
-    var end = cfg.endHour.clamp(1, 24);
+    var start = cfg.startHour.clamp(0, 23).toInt();
+    var end = cfg.endHour.clamp(1, 24).toInt();
     if (end <= start) end = start + 2;
     for (var h = start; h < end; h += 2) {
       hours.add(h);
@@ -383,13 +452,59 @@ class FixtureEngine {
     required int groupCount,
     required int qualifiersPerGroup,
     required int swissMatches,
+    Map<String, MatchStage> knockoutEntryStages = const {},
   }) {
     if (teamIds.length < format.minTeams) {
       return 'Bu format için en az ${format.minTeams} takım gerekir.';
     }
+    if ((format == LeagueFormat.cupSingle || format == LeagueFormat.cupTwoLegged) &&
+        teamIds.length > 64) {
+      return 'Bu kupa formatında şimdilik en fazla 64 takım destekleniyor.';
+    }
     final unique = teamIds.toSet();
     if (unique.length != teamIds.length) {
       return 'Aynı takım birden fazla seçilemez.';
+    }
+
+    if (format.hasKnockout && knockoutEntryStages.isNotEmpty) {
+      if (knockoutEntryStages.length != teamIds.length ||
+          !teamIds.every(knockoutEntryStages.containsKey)) {
+        return 'Özel başlangıç düzeninde her takım için bir giriş turu seçilmelidir.';
+      }
+      var activeTeams = 0;
+      for (final stage in knockoutStageOrder) {
+        final entrants = knockoutEntryStages.values
+            .where((entryStage) => entryStage == stage)
+            .length;
+        final participants = activeTeams + entrants;
+        if (stage == MatchStage.finalMatch) {
+          if (participants != 2) {
+            return 'Finale tam iki takım kalmalı. Giriş turlarını yeniden dağıtın.';
+          }
+          activeTeams = participants;
+          continue;
+        }
+        final stageIndex = knockoutStageOrder.indexOf(stage);
+        final nextStage = knockoutStageOrder[stageIndex + 1];
+        final nextEntrants = knockoutEntryStages.values
+            .where((entryStage) => entryStage == nextStage)
+            .length;
+        final availableCapacity = nextStage.teamCapacity - nextEntrants;
+        final minimumWinners = (participants + 1) ~/ 2;
+        if (participants == 0) {
+          activeTeams = 0;
+        } else if (availableCapacity < minimumWinners || availableCapacity < 1) {
+          return '${stage.label()} ile sonraki turdaki doğrudan girişler birbiriyle uyumsuz.';
+        } else {
+          activeTeams = min(participants, availableCapacity);
+        }
+        if (activeTeams > stage.teamCapacity) {
+          return '${stage.label()} için çok fazla takım var. Daha erken bir tur seçin.';
+        }
+      }
+      if (activeTeams != 2) {
+        return 'Bu giriş turları finalde iki takım bırakmıyor. Takımların başlangıç turlarını yeniden dağıtın.';
+      }
     }
 
     if (format == LeagueFormat.swiss) {
@@ -403,16 +518,24 @@ class FixtureEngine {
 
     if (format.hasGroups) {
       if (groupCount < 2) return 'En az 2 grup olmalı.';
-      if (teamIds.length < groupCount * 2) {
-        return 'Her grupta en az 2 takım olmalı. Takım ekleyin veya grup sayısını azaltın.';
+      if (groupCount > teamIds.length ~/ 2) {
+        return 'Her grupta en az 2 takım olmalı. Grup sayısını azaltın.';
       }
       if (format.hasKnockout) {
+        if (qualifiersPerGroup < 1) {
+          return 'Gruptan çıkan takım sayısı 1 veya daha fazla olmalı.';
+        }
+        if (qualifiersPerGroup != 2) {
+          return 'Gruplu eleme formatında gerçekçi eşleşme için her gruptan 2 takım çıkmalıdır.';
+        }
+        final maxPerGroup =
+            (teamIds.length + groupCount - 1) ~/ groupCount;
+        if (qualifiersPerGroup > maxPerGroup) {
+          return 'Gruptan çıkan takım sayısı, grup başına takım sayısını aşamaz.';
+        }
         final advancers = groupCount * qualifiersPerGroup;
         if (advancers < 2) {
           return 'Eleme turu için gruptan en az 2 takım çıkmalı.';
-        }
-        if (qualifiersPerGroup < 1) {
-          return 'Gruptan çıkan takım sayısı 1 veya daha fazla olmalı.';
         }
       }
     }

@@ -122,9 +122,44 @@ extension LeagueFormatX on LeagueFormat {
 
 enum MatchStatus { scheduled, live, finished }
 
+/// Sıralama eşitliklerinde uygulanacak resmi öncelik sırası.
+/// `headToHead` için mevcut karşılaşmaların puan/averajı kullanılır.
+enum StandingsTieBreaker {
+  points,
+  goalDifference,
+  goalsFor,
+  wins,
+  headToHead,
+  fairPlay,
+}
+
+extension StandingsTieBreakerX on StandingsTieBreaker {
+  String get label => switch (this) {
+        StandingsTieBreaker.points => 'Puan',
+        StandingsTieBreaker.goalDifference => 'Averaj',
+        StandingsTieBreaker.goalsFor => 'Atılan gol',
+        StandingsTieBreaker.wins => 'Galibiyet',
+        StandingsTieBreaker.headToHead => 'İkili averaj',
+        StandingsTieBreaker.fairPlay => 'Fair-play',
+      };
+
+  static StandingsTieBreaker fromStored(String? value) {
+    return StandingsTieBreaker.values.firstWhere(
+      (item) => item.name == value,
+      orElse: () => StandingsTieBreaker.goalDifference,
+    );
+  }
+}
+
+enum KnockoutEntryMode {
+  allFromFirstStage,
+  customEntryStages,
+}
+
 enum MatchStage {
   leagueRound,
   group,
+  roundOf64,
   roundOf32,
   roundOf16,
   quarterFinal,
@@ -133,12 +168,39 @@ enum MatchStage {
   finalMatch,
 }
 
+const knockoutStageOrder = <MatchStage>[
+  MatchStage.roundOf64,
+  MatchStage.roundOf32,
+  MatchStage.roundOf16,
+  MatchStage.quarterFinal,
+  MatchStage.semiFinal,
+  MatchStage.finalMatch,
+];
+
+extension KnockoutEntryModeX on KnockoutEntryMode {
+  String get label => switch (this) {
+        KnockoutEntryMode.allFromFirstStage => 'Herkes ilk turdan',
+        KnockoutEntryMode.customEntryStages => 'Özel başlangıç turları',
+      };
+}
+
 extension MatchStageX on MatchStage {
+  int get teamCapacity => switch (this) {
+        MatchStage.roundOf64 => 64,
+        MatchStage.roundOf32 => 32,
+        MatchStage.roundOf16 => 16,
+        MatchStage.quarterFinal => 8,
+        MatchStage.semiFinal => 4,
+        MatchStage.finalMatch => 2,
+        _ => 0,
+      };
+
   String label({int week = 1, String? groupName}) {
     return switch (this) {
       MatchStage.leagueRound => '$week. Hafta',
       MatchStage.group =>
         groupName == null ? 'Grup' : 'Grup $groupName · $week. Hafta',
+      MatchStage.roundOf64 => 'Son 64',
       MatchStage.roundOf32 => 'Son 32',
       MatchStage.roundOf16 => 'Son 16',
       MatchStage.quarterFinal => 'Çeyrek Final',
@@ -154,13 +216,12 @@ extension MatchStageX on MatchStage {
       };
 
   static MatchStage fromTeamCount(int remaining) {
-    return switch (remaining) {
-      2 => MatchStage.finalMatch,
-      4 => MatchStage.semiFinal,
-      8 => MatchStage.quarterFinal,
-      16 => MatchStage.roundOf16,
-      _ => MatchStage.roundOf32,
-    };
+    if (remaining <= 2) return MatchStage.finalMatch;
+    if (remaining <= 4) return MatchStage.semiFinal;
+    if (remaining <= 8) return MatchStage.quarterFinal;
+    if (remaining <= 16) return MatchStage.roundOf16;
+    if (remaining <= 32) return MatchStage.roundOf32;
+    return MatchStage.roundOf64;
   }
 }
 
