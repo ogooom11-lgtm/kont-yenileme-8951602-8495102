@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/league.dart';
-import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../utils/helpers.dart';
-import 'lineup_edit_page.dart';
 import 'match_time_edit_page.dart';
 
 class MatchDetailsPage extends StatelessWidget {
@@ -15,252 +13,187 @@ class MatchDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final m = state.findMatchById(matchId);
-    if (m == null) {
+    final match = state.findMatchById(matchId);
+    if (match == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Maç')),
         body: const Center(child: Text('Maç bulunamadı.')),
       );
     }
-    final home = state.findTeam(m.homeTeamId);
-    final away = state.findTeam(m.awayTeamId);
-    final planned = m.status == MatchStatus.scheduled;
+    final home = state.findTeam(match.homeTeamId);
+    final away = state.findTeam(match.awayTeamId);
+    final league = state.leagueOfMatch(match.id);
+    final scheduled = match.status == MatchStatus.scheduled;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Maç detayı'),
+        title: const Text('Maç merkezi'),
         actions: [
-          if (planned) ...[
+          if (scheduled)
             IconButton(
-              tooltip: 'Ev kadro',
+              tooltip: 'Maç saatini düzenle',
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => LineupEditPage(matchId: m.id, isHome: true),
-                ),
+                MaterialPageRoute(builder: (_) => MatchTimeEditPage(matchId: match.id)),
               ),
-              icon: const Icon(Icons.home_outlined),
+              icon: const Icon(Icons.edit_calendar_outlined),
             ),
-            IconButton(
-              tooltip: 'Deplasman kadro',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      LineupEditPage(matchId: m.id, isHome: false),
-                ),
-              ),
-              icon: const Icon(Icons.flight_takeoff),
-            ),
-            IconButton(
-              tooltip: 'Saat',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MatchTimeEditPage(matchId: m.id),
-                ),
-              ),
-              icon: const Icon(Icons.edit_calendar),
-            ),
-          ],
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Text(
-                    m.stage.label(week: m.week, groupName: m.groupName),
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(home?.icon ?? '?', style: const TextStyle(fontSize: 36)),
-                            Text(home?.name ?? '?',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontWeight: FontWeight.w800)),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        m.status == MatchStatus.scheduled
-                            ? 'VS'
-                            : '${m.homeGoals} - ${m.awayGoals}',
-                        style: const TextStyle(
-                            fontSize: 28, fontWeight: FontWeight.w900),
-                      ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(away?.icon ?? (m.isBye ? '—' : '?'),
-                                style: const TextStyle(fontSize: 36)),
-                            Text(m.isBye ? 'Bay' : (away?.name ?? '?'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontWeight: FontWeight.w800)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(_status(state, m)),
-                  if (m.startTime != null) Text(formatDateTime(m.startTime!)),
-                  if (m.usedPenalties)
-                    Text('Penaltılar ${m.homePenalties} - ${m.awayPenalties}'),
-                ],
+          _ScoreHero(match: match, homeName: home?.name ?? '?', homeIcon: home?.icon ?? '⚽', awayName: away?.name ?? '?', awayIcon: away?.icon ?? '⚽', state: state),
+          const SizedBox(height: 14),
+          if (league != null && match.stage.isKnockout)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.account_tree_outlined),
+                title: Text(match.stage.label()),
+                subtitle: Text(league.title + (match.tieId == null ? ' · Tek maç' : ' · Rövanşlı eşleşme')),
               ),
             ),
-          ),
-          if (planned || m.status == MatchStatus.live) ...[
+          if (scheduled || match.status == MatchStatus.live) ...[
             const SizedBox(height: 12),
-            FilledButton.tonalIcon(
-              onPressed: () => _manualResult(context, state, m),
+            FilledButton.icon(
+              onPressed: () => _manualResult(context, state, match),
               icon: const Icon(Icons.scoreboard_outlined),
               label: const Text('Sonuç gir'),
             ),
           ],
-          const SizedBox(height: 18),
-          Text('Kadrolar', style: Theme.of(context).textTheme.titleMedium),
+          if (match.status == MatchStatus.live) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => state.recordAiGoal(matchId: match.id, isHome: true),
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Ev golü'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => state.recordAiGoal(matchId: match.id, isHome: false),
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Dep golü'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 22),
+          Text('Maç olayları', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          _LineupCard(team: home, lineup: m.homeLineup, side: 'Ev sahibi'),
-          const SizedBox(height: 8),
-          _LineupCard(team: away, lineup: m.awayLineup, side: 'Deplasman'),
-          const SizedBox(height: 18),
-          Text('Olaylar', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          if (m.events.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Henüz olay yok.'),
-              ),
-            )
+          if (match.events.isEmpty)
+            const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Henüz kayıtlı olay yok.')))
           else
             Card(
               child: Column(
-                children: [
-                  for (final ev in m.events)
-                    ListTile(
-                      leading: const Icon(Icons.sports_soccer),
-                      title: Text(
-                        "${ev.type.label}  ${ev.minute}'  ${_player(ev.isHome ? home : away, ev.playerId) ?? ''}",
-                      ),
-                      subtitle: Text(
-                          ev.isHome ? (home?.name ?? '') : (away?.name ?? '')),
-                    ),
-                ],
+                children: match.events.map((event) => ListTile(
+                  dense: true,
+                  leading: Icon(_eventIcon(event.type)),
+                  title: Text('${event.type.label}  ${event.minute}\''),
+                  subtitle: Text(event.isHome ? (home?.name ?? 'Ev sahibi') : (away?.name ?? 'Deplasman')),
+                )).toList(),
               ),
             ),
+          const SizedBox(height: 18),
+          Text('Kurallar', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text(match.stage.isKnockout ? 'Eleme maçı' : 'Puan maçı'),
+              subtitle: Text(match.stage.isKnockout
+                  ? 'Eşitlikler turnuvanın uzatma ve penaltı ayarlarına göre çözülür.'
+                  : 'Sonuç puan tablosuna işlenir.'),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  String _status(AppState state, MatchGame m) => switch (m.status) {
-        MatchStatus.scheduled => 'Planlı',
-        MatchStatus.live => 'Canlı  ${state.liveMinuteFor(m.id)}\'',
-        MatchStatus.finished => 'Bitti',
+  IconData _eventIcon(EventType type) => switch (type) {
+        EventType.goal || EventType.penaltyGoal || EventType.ownGoal => Icons.sports_soccer,
+        EventType.yellow => Icons.square,
+        EventType.red => Icons.square,
+        EventType.save => Icons.pan_tool_outlined,
       };
 
-  String? _player(Team? t, String? id) {
-    if (t == null || id == null) return null;
-    for (final p in t.players) {
-      if (p.id == id) return p.fullName;
-    }
-    return null;
-  }
+  void _manualResult(BuildContext context, AppState state, MatchGame match) {
+    final h = TextEditingController(text: '${match.homeGoals}');
+    final a = TextEditingController(text: '${match.awayGoals}');
+    final ph = TextEditingController(text: '${match.homePenalties}');
+    final pa = TextEditingController(text: '${match.awayPenalties}');
+    var penalties = match.usedPenalties;
 
-  void _manualResult(BuildContext context, AppState state, MatchGame m) {
-    final h = TextEditingController(text: '${m.homeGoals}');
-    final a = TextEditingController(text: '${m.awayGoals}');
-    final ph = TextEditingController(text: '${m.homePenalties}');
-    final pa = TextEditingController(text: '${m.awayPenalties}');
-    var pens = m.usedPenalties || m.stage.isKnockout;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 8, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 8, 20, 20 + MediaQuery.of(sheetContext).viewInsets.bottom),
         child: StatefulBuilder(
-          builder: (ctx, setS) => Column(
+          builder: (ctx, setSheetState) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Maç sonucu',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-              const SizedBox(height: 12),
+              const Text('Resmî sonuç', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              const SizedBox(height: 14),
               Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: h,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(labelText: 'Ev'),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('-', style: TextStyle(fontSize: 22)),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: a,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(labelText: 'Dep'),
-                    ),
-                  ),
+                  Expanded(child: TextField(controller: h, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(labelText: 'Ev'))),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('-', style: TextStyle(fontSize: 22))),
+                  Expanded(child: TextField(controller: a, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(labelText: 'Dep'))),
                 ],
               ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Penaltı atışları'),
-                value: pens,
-                onChanged: (v) => setS(() => pens = v),
-              ),
-              if (pens)
+              if (match.stage.isKnockout)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Penaltı atışları'),
+                  value: penalties,
+                  onChanged: (value) => setSheetState(() => penalties = value),
+                ),
+              if (penalties)
                 Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: ph,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        decoration: const InputDecoration(labelText: 'Ev pen'),
-                      ),
-                    ),
+                    Expanded(child: TextField(controller: ph, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(labelText: 'Ev pen'))),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: pa,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        decoration: const InputDecoration(labelText: 'Dep pen'),
-                      ),
-                    ),
+                    Expanded(child: TextField(controller: pa, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(labelText: 'Dep pen'))),
                   ],
                 ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: () {
-                  state.setMatchResult(
-                    m.id,
+                onPressed: () async {
+                  if (state.confirmResults) {
+                    final confirmed = await showDialog<bool>(
+                      context: ctx,
+                      builder: (confirmContext) => AlertDialog(
+                        title: const Text('Sonuç kaydedilsin mi?'),
+                        content: Text('${h.text.isEmpty ? "0" : h.text} - ${a.text.isEmpty ? "0" : a.text} sonucu resmi hale gelecek.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Düzenle')),
+                          FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Onayla')),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true || !ctx.mounted) return;
+                  }
+                  final error = await state.setMatchResult(
+                    match.id,
                     int.tryParse(h.text) ?? 0,
                     int.tryParse(a.text) ?? 0,
                     homePenalties: int.tryParse(ph.text) ?? 0,
                     awayPenalties: int.tryParse(pa.text) ?? 0,
-                    usedPenalties: pens,
+                    usedPenalties: penalties,
                   );
+                  if (!ctx.mounted) return;
+                  if (error != null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(error)));
+                    return;
+                  }
                   Navigator.pop(ctx);
                 },
                 child: const Text('Kaydet ve bitir'),
@@ -273,56 +206,66 @@ class MatchDetailsPage extends StatelessWidget {
   }
 }
 
-class _LineupCard extends StatelessWidget {
-  final Team? team;
-  final Lineup? lineup;
-  final String side;
-  const _LineupCard({required this.team, required this.lineup, required this.side});
+class _ScoreHero extends StatelessWidget {
+  final MatchGame match;
+  final String homeName;
+  final String homeIcon;
+  final String awayName;
+  final String awayIcon;
+  final AppState state;
+  const _ScoreHero({required this.match, required this.homeName, required this.homeIcon, required this.awayName, required this.awayIcon, required this.state});
 
   @override
   Widget build(BuildContext context) {
-    if (team == null) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Takım yok'),
-        ),
-      );
-    }
-    final names = <String>[];
-    if (lineup != null) {
-      for (final id in lineup!.playerIds) {
-        final p = team!.players.where((x) => x.id == id);
-        names.add(p.isEmpty ? '?' : p.first.fullName);
-      }
-    }
-    String keeper = '—';
-    if (lineup?.keeperId != null) {
-      final k = team!.keepers.where((x) => x.id == lineup!.keeperId);
-      keeper = k.isEmpty ? '?' : k.first.fullName;
-    }
+    final scheduled = match.status == MatchStatus.scheduled;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Theme.of(context).colorScheme.primary.withValues(alpha: 0.12), Theme.of(context).colorScheme.surface],
+          ),
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$side · ${team!.icon} ${team!.name}',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text('Kaleci: $keeper'),
-            const SizedBox(height: 6),
-            if (names.isEmpty)
-              const Text('Kadro seçilmedi. Maç başlarsa otomatik kurulur.')
-            else
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: names.map((n) => Chip(label: Text(n))).toList(),
-              ),
+            Text(match.stage.label(week: match.week, groupName: match.groupName), style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(child: _Team(name: homeName, icon: homeIcon)),
+                Text(scheduled ? 'VS' : '${match.homeGoals} - ${match.awayGoals}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                Expanded(child: _Team(name: awayName, icon: awayIcon)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(_statusText(), style: TextStyle(color: match.status == MatchStatus.live ? Colors.red : Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+            if (match.startTime != null) Text(formatDateTime(match.startTime!), style: Theme.of(context).textTheme.bodySmall),
+            if (match.usedPenalties) Text('Penaltı: ${match.homePenalties} - ${match.awayPenalties}', style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       ),
     );
   }
+
+  String _statusText() => switch (match.status) {
+        MatchStatus.scheduled => 'Planlı',
+        MatchStatus.live => 'CANLI · ${state.liveMinuteFor(match.id)}\'',
+        MatchStatus.finished => 'Tamamlandı',
+      };
+}
+
+class _Team extends StatelessWidget {
+  final String name;
+  final String icon;
+  const _Team({required this.name, required this.icon});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 38)),
+          const SizedBox(height: 5),
+          Text(name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        ],
+      );
 }

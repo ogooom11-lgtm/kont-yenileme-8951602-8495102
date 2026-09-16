@@ -17,7 +17,7 @@ class TeamAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.12),
+        color: cs.primary.withValues(alpha: 0.12),
         shape: BoxShape.circle,
       ),
       child: Text(

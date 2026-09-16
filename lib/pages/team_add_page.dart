@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/models.dart';
 import '../providers/app_state.dart';
-import '../utils/helpers.dart';
 
 class TeamAddPage extends StatefulWidget {
   const TeamAddPage({super.key});
@@ -14,209 +12,132 @@ class TeamAddPage extends StatefulWidget {
 
 class _TeamAddPageState extends State<TeamAddPage> {
   final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  String _icon = '🦊';
-  double _power = 5;
-  final _players = <Player>[];
-  final _keepers = <GoalKeeper>[];
-  Coach? _coach;
+  final _nameController = TextEditingController();
+  String _icon = '⚽';
+  bool _saving = false;
 
   static const _icons = [
-    '🦊', '🐺', '🦁', '🦅', '🐉', '🐯', '🐻', '🦈',
-    '⚡', '🔥', '🛡️', '⭐', '🎯', '💎', '🌙', '☀️',
+    '⚽', '🦁', '🦅', '🐺', '🐉', '🐯', '🦊', '🐻',
+    '🦈', '🔥', '⚡', '⭐', '💎', '🛡️', '🌙', '☀️',
   ];
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni Takım')),
+      appBar: AppBar(title: const Text('Yeni takım')),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
-            TextFormField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Takım adı'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Zorunlu alan' : null,
+            Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 112,
+                height: 112,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withValues(alpha: 0.28), width: 2),
+                ),
+                child: Text(_icon, style: const TextStyle(fontSize: 52)),
+              ),
             ),
-            const SizedBox(height: 16),
-            const Text('Arma', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Takım adı',
+                hintText: 'Örn: Al Wakrah FC',
+                prefixIcon: Icon(Icons.groups_outlined),
+              ),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Takım adı gerekli'
+                  : null,
+            ),
+            const SizedBox(height: 24),
+            Text('Takım ikonunu seç',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    )),
+            const SizedBox(height: 10),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               children: _icons
-                  .map((e) => ChoiceChip(
-                        label: Text(e, style: const TextStyle(fontSize: 20)),
-                        selected: _icon == e,
-                        onSelected: (_) => setState(() => _icon = e),
-                      ))
+                  .map(
+                    (icon) => ChoiceChip(
+                      label: Text(icon, style: const TextStyle(fontSize: 22)),
+                      selected: _icon == icon,
+                      onSelected: (_) => setState(() => _icon = icon),
+                    ),
+                  )
                   .toList(),
             ),
-            const SizedBox(height: 16),
-            Text('Takım gücü: ${_power.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            Slider(
-              value: _power,
-              min: 1,
-              max: 8,
-              divisions: 70,
-              label: _power.toStringAsFixed(2),
-              onChanged: (v) => setState(() => _power = v),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.school),
-              title: Text(_coach == null
-                  ? 'Teknik direktör ekle'
-                  : '${_coach!.fullName}  (${_coach!.iqPower.toStringAsFixed(1)})'),
-              trailing: const Icon(Icons.edit),
-              onTap: _editCoach,
-            ),
-            const Divider(),
-            _header('Oyuncular', Icons.person_add, _addPlayer),
-            ..._players.map((p) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person),
-                  title: Text(p.fullName),
-                  trailing: Text(p.power.toStringAsFixed(1)),
-                  onLongPress: () => setState(() => _players.remove(p)),
-                )),
-            const SizedBox(height: 8),
-            _header('Kaleciler', Icons.sports_handball, _addKeeper),
-            ..._keepers.map((k) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.shield),
-                  title: Text(k.fullName),
-                  trailing: Text(k.keepingPower.toStringAsFixed(1)),
-                  onLongPress: () => setState(() => _keepers.remove(k)),
-                )),
-            const SizedBox(height: 8),
-            Text(
-              'İpucu: satırı uzun basarak silebilirsiniz. 11 oyuncu şart değil.',
-              style: Theme.of(context).textTheme.bodySmall,
+            const SizedBox(height: 24),
+            Card(
+              color: color.withValues(alpha: 0.08),
+              child: const Padding(
+                padding: EdgeInsets.all(14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.auto_awesome_outlined),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Takımını oluşturmak için bu kadar yeterli. KONT maçları ve turnuvaları otomatik olarak düzenler.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           child: FilledButton.icon(
-            icon: const Icon(Icons.save),
-            label: const Text('Kaydet'),
-            onPressed: _save,
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check_circle_outline),
+            label: Text(_saving ? 'Kaydediliyor...' : 'Takımı ekle'),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _header(String t, IconData icon, VoidCallback onAdd) {
-    return Row(
-      children: [
-        Text(t, style: const TextStyle(fontWeight: FontWeight.w800)),
-        const Spacer(),
-        IconButton(onPressed: onAdd, icon: Icon(icon)),
-      ],
-    );
-  }
-
-  Future<void> _personDialog({
-    required String title,
-    required void Function(String name, double power) onOk,
-  }) async {
-    final name = TextEditingController();
-    var power = 5.0;
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Ad soyad'),
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 12),
-              Text('Güç: ${power.toStringAsFixed(2)}'),
-              Slider(
-                value: power,
-                min: 1,
-                max: 8,
-                divisions: 70,
-                onChanged: (v) => setS(() => power = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('İptal')),
-            FilledButton(
-              onPressed: () {
-                if (name.text.trim().isEmpty) return;
-                onOk(name.text.trim(), double.parse(power.toStringAsFixed(2)));
-                Navigator.pop(ctx);
-              },
-              child: const Text('Ekle'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _addPlayer() {
-    _personDialog(
-      title: 'Oyuncu ekle',
-      onOk: (n, p) => setState(() {
-        _players.add(Player(id: newId(), fullName: n, power: p));
-      }),
-    );
-  }
-
-  void _addKeeper() {
-    _personDialog(
-      title: 'Kaleci ekle',
-      onOk: (n, p) => setState(() {
-        _keepers.add(GoalKeeper(id: newId(), fullName: n, keepingPower: p));
-      }),
-    );
-  }
-
-  void _editCoach() {
-    _personDialog(
-      title: 'Teknik direktör',
-      onOk: (n, p) => setState(() {
-        _coach = Coach(id: newId(), fullName: n, iqPower: p);
-      }),
     );
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    _coach ??= Coach(id: newId(), fullName: 'Teknik Direktör', iqPower: 5);
-    await context.read<AppState>().addTeam(
-          name: _nameCtrl.text,
+    setState(() => _saving = true);
+    final error = await context.read<AppState>().addTeam(
+          name: _nameController.text,
           icon: _icon,
-          teamPower: double.parse(_power.toStringAsFixed(2)),
-          players: _players,
-          coach: _coach!,
-          keepers: _keepers,
         );
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    Navigator.pop(context);
   }
 }

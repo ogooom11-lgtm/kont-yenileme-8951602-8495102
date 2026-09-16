@@ -56,6 +56,19 @@ class GroupInfo {
       );
 }
 
+Map<String, MatchStage> _decodeKnockoutEntryStages(dynamic raw) {
+  if (raw is! Map) return {};
+  final result = <String, MatchStage>{};
+  raw.forEach((key, value) {
+    final stage = MatchStage.values.firstWhere(
+      (item) => item.name == value?.toString(),
+      orElse: () => MatchStage.roundOf32,
+    );
+    result[key.toString()] = stage;
+  });
+  return result;
+}
+
 class League {
   final String id;
   String title;
@@ -75,6 +88,21 @@ class League {
   int legs;
   String icon;
 
+  /// Turnuvanın saha içi ve otomasyon kuralları.
+  bool autoAdvance;
+  bool allowExtraTime;
+  bool allowPenalties;
+  bool randomizeDraw;
+  int minRestHours;
+  bool thirdPlaceMatch;
+  List<StandingsTieBreaker> tieBreakers;
+  String notes;
+
+  /// Advanced knockout setup. The map is empty when every team starts in the
+  /// automatically calculated first round.
+  Map<String, MatchStage> knockoutEntryStages;
+  bool seededKnockoutDraw;
+
   League({
     required this.id,
     required this.title,
@@ -93,6 +121,22 @@ class League {
     this.swissMatches = 3,
     this.legs = 1,
     this.icon = '🏆',
+    this.autoAdvance = true,
+    this.allowExtraTime = true,
+    this.allowPenalties = true,
+    this.randomizeDraw = true,
+    this.minRestHours = 48,
+    this.thirdPlaceMatch = false,
+    this.tieBreakers = const [
+      StandingsTieBreaker.points,
+      StandingsTieBreaker.goalDifference,
+      StandingsTieBreaker.goalsFor,
+      StandingsTieBreaker.wins,
+      StandingsTieBreaker.headToHead,
+    ],
+    this.notes = '',
+    this.knockoutEntryStages = const {},
+    this.seededKnockoutDraw = true,
   });
 
   /// Eski `type` alanı ile uyumluluk.
@@ -126,6 +170,18 @@ class League {
         'swissMatches': swissMatches,
         'legs': legs,
         'icon': icon,
+        'autoAdvance': autoAdvance,
+        'allowExtraTime': allowExtraTime,
+        'allowPenalties': allowPenalties,
+        'randomizeDraw': randomizeDraw,
+        'minRestHours': minRestHours,
+        'thirdPlaceMatch': thirdPlaceMatch,
+        'tieBreakers': tieBreakers.map((x) => x.name).toList(),
+        'notes': notes,
+        'knockoutEntryStages': knockoutEntryStages.map(
+          (teamId, stage) => MapEntry(teamId, stage.name),
+        ),
+        'seededKnockoutDraw': seededKnockoutDraw,
       };
 
   factory League.fromMap(Map<String, dynamic> m) => League(
@@ -140,20 +196,40 @@ class League {
         matches: ((m['matches'] as List?) ?? [])
             .map((x) => MatchGame.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
-        winPoints: m['winPoints'] ?? 3,
-        drawPoints: m['drawPoints'] ?? 1,
-        losePoints: m['losePoints'] ?? 0,
-        leagueColorValue: m['leagueColorValue'] ?? 0xFF0B6E4F,
+        winPoints: (m['winPoints'] as num?)?.toInt() ?? 3,
+        drawPoints: (m['drawPoints'] as num?)?.toInt() ?? 1,
+        losePoints: (m['losePoints'] as num?)?.toInt() ?? 0,
+        leagueColorValue:
+            (m['leagueColorValue'] as num?)?.toInt() ?? 0xFF0B6E4F,
         rankDefinitions: ((m['rankDefinitions'] as List?) ?? [])
             .map((x) => RankDefinition.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
         groups: ((m['groups'] as List?) ?? [])
             .map((x) => GroupInfo.fromMap(Map<String, dynamic>.from(x)))
             .toList(),
-        qualifiersPerGroup: m['qualifiersPerGroup'] ?? 2,
-        swissMatches: m['swissMatches'] ?? 3,
-        legs: m['legs'] ?? 1,
+        qualifiersPerGroup:
+            (m['qualifiersPerGroup'] as num?)?.toInt() ?? 2,
+        swissMatches: (m['swissMatches'] as num?)?.toInt() ?? 3,
+        legs: (m['legs'] as num?)?.toInt() ?? 1,
         icon: (m['icon'] as String?) ?? '🏆',
+        autoAdvance: m['autoAdvance'] as bool? ?? true,
+        allowExtraTime: m['allowExtraTime'] as bool? ?? true,
+        allowPenalties: m['allowPenalties'] as bool? ?? true,
+        randomizeDraw: m['randomizeDraw'] as bool? ?? true,
+        minRestHours: (m['minRestHours'] as num?)?.toInt() ?? 48,
+        thirdPlaceMatch: m['thirdPlaceMatch'] as bool? ?? false,
+        tieBreakers: ((m['tieBreakers'] as List?) ?? [
+          'points',
+          'goalDifference',
+          'goalsFor',
+          'wins',
+          'headToHead',
+        ])
+            .map((x) => StandingsTieBreakerX.fromStored(x.toString()))
+            .toList(),
+        notes: (m['notes'] as String?) ?? '',
+        knockoutEntryStages: _decodeKnockoutEntryStages(m['knockoutEntryStages']),
+        seededKnockoutDraw: m['seededKnockoutDraw'] as bool? ?? true,
       );
 
   String toJson() => jsonEncode(toMap());
@@ -172,7 +248,6 @@ String leagueTypeLabel(LeagueType t) => switch (t) {
 class MatchEvent {
   final int minute;
   final String teamId;
-  final String? playerId;
   final bool isHome;
   final EventType type;
 
@@ -180,14 +255,12 @@ class MatchEvent {
     required this.minute,
     required this.teamId,
     required this.isHome,
-    this.playerId,
     this.type = EventType.goal,
   });
 
   Map<String, dynamic> toMap() => {
         'minute': minute,
         'teamId': teamId,
-        'playerId': playerId,
         'isHome': isHome,
         'type': type.name,
       };
@@ -195,28 +268,11 @@ class MatchEvent {
   factory MatchEvent.fromMap(Map<String, dynamic> m) => MatchEvent(
         minute: (m['minute'] as num?)?.toInt() ?? 0,
         teamId: m['teamId'] as String,
-        playerId: m['playerId'] as String?,
         isHome: m['isHome'] as bool? ?? true,
         type: EventType.values.firstWhere(
           (e) => e.name == m['type'],
           orElse: () => EventType.goal,
         ),
-      );
-}
-
-class Lineup {
-  List<String> playerIds;
-  String? keeperId;
-
-  Lineup({List<String>? playerIds, this.keeperId})
-      : playerIds = playerIds ?? [];
-
-  Map<String, dynamic> toMap() =>
-      {'playerIds': playerIds, 'keeperId': keeperId};
-
-  factory Lineup.fromMap(Map<String, dynamic> m) => Lineup(
-        playerIds: ((m['playerIds'] as List?) ?? []).cast<String>(),
-        keeperId: m['keeperId'] as String?,
       );
 }
 
@@ -231,12 +287,6 @@ class MatchGame {
   int homeGoals;
   int awayGoals;
   List<MatchEvent> events;
-  Lineup? homeLineup;
-  Lineup? awayLineup;
-
-  int homeSaves;
-  int awaySaves;
-  Map<String, int> goalsByPlayer;
   DateTime? endTime;
   bool finalized;
 
@@ -261,11 +311,6 @@ class MatchGame {
     this.homeGoals = 0,
     this.awayGoals = 0,
     List<MatchEvent>? events,
-    this.homeLineup,
-    this.awayLineup,
-    this.homeSaves = 0,
-    this.awaySaves = 0,
-    Map<String, int>? goalsByPlayer,
     this.endTime,
     this.finalized = false,
     this.week = 1,
@@ -278,83 +323,12 @@ class MatchGame {
     this.awayPenalties = 0,
     this.usedPenalties = false,
     this.winnerTeamId,
-  })  : events = events ?? [],
-        goalsByPlayer = goalsByPlayer ?? {};
+  }) : events = events ?? [];
 
   bool get isBye => awayTeamId == 'BYE' || homeTeamId == 'BYE';
 
   int get homeTotal => homeGoals;
   int get awayTotal => awayGoals;
-
-  Map<String, int> get scorerMap {
-    if (goalsByPlayer.isNotEmpty) return goalsByPlayer;
-    final map = <String, int>{};
-    for (final ev in events) {
-      if (ev.playerId == null || ev.playerId!.isEmpty) continue;
-      if (ev.type == EventType.goal || ev.type == EventType.penaltyGoal) {
-        map.update(ev.playerId!, (v) => v + 1, ifAbsent: () => 1);
-      }
-    }
-    return map;
-  }
-
-  MatchGame copyWith({
-    String? id,
-    String? leagueId,
-    String? homeTeamId,
-    String? awayTeamId,
-    DateTime? startTime,
-    MatchStatus? status,
-    int? homeGoals,
-    int? awayGoals,
-    List<MatchEvent>? events,
-    Lineup? homeLineup,
-    Lineup? awayLineup,
-    int? homeSaves,
-    int? awaySaves,
-    Map<String, int>? goalsByPlayer,
-    DateTime? endTime,
-    bool? finalized,
-    int? week,
-    MatchStage? stage,
-    String? groupId,
-    String? groupName,
-    String? tieId,
-    int? leg,
-    int? homePenalties,
-    int? awayPenalties,
-    bool? usedPenalties,
-    String? winnerTeamId,
-  }) {
-    return MatchGame(
-      id: id ?? this.id,
-      leagueId: leagueId ?? this.leagueId,
-      homeTeamId: homeTeamId ?? this.homeTeamId,
-      awayTeamId: awayTeamId ?? this.awayTeamId,
-      startTime: startTime ?? this.startTime,
-      status: status ?? this.status,
-      homeGoals: homeGoals ?? this.homeGoals,
-      awayGoals: awayGoals ?? this.awayGoals,
-      events: events ?? this.events,
-      homeLineup: homeLineup ?? this.homeLineup,
-      awayLineup: awayLineup ?? this.awayLineup,
-      homeSaves: homeSaves ?? this.homeSaves,
-      awaySaves: awaySaves ?? this.awaySaves,
-      goalsByPlayer: goalsByPlayer ?? Map<String, int>.from(this.goalsByPlayer),
-      endTime: endTime ?? this.endTime,
-      finalized: finalized ?? this.finalized,
-      week: week ?? this.week,
-      stage: stage ?? this.stage,
-      groupId: groupId ?? this.groupId,
-      groupName: groupName ?? this.groupName,
-      tieId: tieId ?? this.tieId,
-      leg: leg ?? this.leg,
-      homePenalties: homePenalties ?? this.homePenalties,
-      awayPenalties: awayPenalties ?? this.awayPenalties,
-      usedPenalties: usedPenalties ?? this.usedPenalties,
-      winnerTeamId: winnerTeamId ?? this.winnerTeamId,
-    );
-  }
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -366,11 +340,6 @@ class MatchGame {
         'homeGoals': homeGoals,
         'awayGoals': awayGoals,
         'events': events.map((e) => e.toMap()).toList(),
-        'homeLineup': homeLineup?.toMap(),
-        'awayLineup': awayLineup?.toMap(),
-        'homeSaves': homeSaves,
-        'awaySaves': awaySaves,
-        'goalsByPlayer': goalsByPlayer,
         'endTime': endTime?.toIso8601String(),
         'finalized': finalized,
         'week': week,
@@ -385,54 +354,36 @@ class MatchGame {
         'winnerTeamId': winnerTeamId,
       };
 
-  factory MatchGame.fromMap(Map<String, dynamic> m) {
-    final gbp = <String, int>{};
-    final raw = m['goalsByPlayer'];
-    if (raw is Map) {
-      raw.forEach((k, v) {
-        gbp[k.toString()] = (v as num).toInt();
-      });
-    }
-    return MatchGame(
-      id: m['id'] as String,
-      leagueId: m['leagueId'] as String,
-      homeTeamId: m['homeTeamId'] as String,
-      awayTeamId: m['awayTeamId'] as String,
-      startTime:
-          m['startTime'] == null ? null : DateTime.parse(m['startTime']),
-      status: MatchStatus.values.firstWhere(
-        (x) => x.name == m['status'],
-        orElse: () => MatchStatus.scheduled,
-      ),
-      homeGoals: (m['homeGoals'] as num?)?.toInt() ?? 0,
-      awayGoals: (m['awayGoals'] as num?)?.toInt() ?? 0,
-      events: ((m['events'] as List?) ?? [])
-          .map((e) => MatchEvent.fromMap(Map<String, dynamic>.from(e)))
-          .toList(),
-      homeLineup: m['homeLineup'] == null
-          ? null
-          : Lineup.fromMap(Map<String, dynamic>.from(m['homeLineup'])),
-      awayLineup: m['awayLineup'] == null
-          ? null
-          : Lineup.fromMap(Map<String, dynamic>.from(m['awayLineup'])),
-      homeSaves: (m['homeSaves'] as num?)?.toInt() ?? 0,
-      awaySaves: (m['awaySaves'] as num?)?.toInt() ?? 0,
-      goalsByPlayer: gbp,
-      endTime: m['endTime'] == null ? null : DateTime.parse(m['endTime']),
-      finalized: m['finalized'] as bool? ?? false,
-      week: (m['week'] as num?)?.toInt() ?? 1,
-      stage: MatchStage.values.firstWhere(
-        (x) => x.name == m['stage'],
-        orElse: () => MatchStage.leagueRound,
-      ),
-      groupId: m['groupId'] as String?,
-      groupName: m['groupName'] as String?,
-      tieId: m['tieId'] as String?,
-      leg: (m['leg'] as num?)?.toInt() ?? 1,
-      homePenalties: (m['homePenalties'] as num?)?.toInt() ?? 0,
-      awayPenalties: (m['awayPenalties'] as num?)?.toInt() ?? 0,
-      usedPenalties: m['usedPenalties'] as bool? ?? false,
-      winnerTeamId: m['winnerTeamId'] as String?,
-    );
-  }
+  factory MatchGame.fromMap(Map<String, dynamic> m) => MatchGame(
+        id: m['id'] as String,
+        leagueId: m['leagueId'] as String,
+        homeTeamId: m['homeTeamId'] as String,
+        awayTeamId: m['awayTeamId'] as String,
+        startTime: m['startTime'] == null ? null : DateTime.parse(m['startTime']),
+        status: MatchStatus.values.firstWhere(
+          (x) => x.name == m['status'],
+          orElse: () => MatchStatus.scheduled,
+        ),
+        homeGoals: (m['homeGoals'] as num?)?.toInt() ?? 0,
+        awayGoals: (m['awayGoals'] as num?)?.toInt() ?? 0,
+        events: ((m['events'] as List?) ?? [])
+            .whereType<Map>()
+            .map((e) => MatchEvent.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        endTime: m['endTime'] == null ? null : DateTime.parse(m['endTime']),
+        finalized: m['finalized'] as bool? ?? false,
+        week: (m['week'] as num?)?.toInt() ?? 1,
+        stage: MatchStage.values.firstWhere(
+          (x) => x.name == m['stage'],
+          orElse: () => MatchStage.leagueRound,
+        ),
+        groupId: m['groupId'] as String?,
+        groupName: m['groupName'] as String?,
+        tieId: m['tieId'] as String?,
+        leg: (m['leg'] as num?)?.toInt() ?? 1,
+        homePenalties: (m['homePenalties'] as num?)?.toInt() ?? 0,
+        awayPenalties: (m['awayPenalties'] as num?)?.toInt() ?? 0,
+        usedPenalties: m['usedPenalties'] as bool? ?? false,
+        winnerTeamId: m['winnerTeamId'] as String?,
+      );
 }

@@ -27,6 +27,7 @@ class MatchCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final live = match.status == MatchStatus.live;
     final done = match.status == MatchStatus.finished;
+    final dense = compact || state.compactCards;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -39,7 +40,7 @@ class MatchCard extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 12,
-            vertical: compact ? 10 : 14,
+            vertical: dense ? 10 : 14,
           ),
           child: Column(
             children: [
@@ -133,7 +134,7 @@ class MatchCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: live
-            ? Colors.red.withOpacity(0.12)
+            ? Colors.red.withValues(alpha: 0.12)
             : (done
                 ? Theme.of(context).colorScheme.surfaceContainerHighest
                 : Colors.transparent),

@@ -97,53 +97,116 @@ class _LiveMatchesPageState extends State<LiveMatchesPage> {
   void _score(BuildContext context, AppState state, MatchGame match) {
     final h = TextEditingController();
     final a = TextEditingController();
+    final ph = TextEditingController();
+    final pa = TextEditingController();
+    var pens = false;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Maç sonucu'),
-        content: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: h,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(hintText: '0'),
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Maç sonucu'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: h,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: const InputDecoration(labelText: 'Ev'),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Text('-'),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: a,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: const InputDecoration(labelText: 'Dep'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (match.stage.isKnockout)
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Penaltı atışları'),
+                    value: pens,
+                    onChanged: (value) => setDialogState(() => pens = value),
+                  ),
+                if (pens)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: ph,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          decoration: const InputDecoration(labelText: 'Ev pen'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: pa,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          decoration: const InputDecoration(labelText: 'Dep pen'),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text('-'),
-            ),
-            Expanded(
-              child: TextField(
-                controller: a,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(hintText: '0'),
-              ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+            FilledButton(
+              onPressed: () async {
+                if (state.confirmResults) {
+                  final confirmed = await showDialog<bool>(
+                    context: ctx,
+                    builder: (confirmContext) => AlertDialog(
+                      title: const Text('Sonuç kaydedilsin mi?'),
+                      content: Text('${h.text.isEmpty ? "0" : h.text} - ${a.text.isEmpty ? "0" : a.text}'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Düzenle')),
+                        FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Onayla')),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true || !ctx.mounted) return;
+                }
+                final error = await state.setMatchResult(
+                  match.id,
+                  int.tryParse(h.text) ?? 0,
+                  int.tryParse(a.text) ?? 0,
+                  homePenalties: int.tryParse(ph.text) ?? 0,
+                  awayPenalties: int.tryParse(pa.text) ?? 0,
+                  usedPenalties: pens,
+                );
+                if (!ctx.mounted) return;
+                if (error != null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(error)));
+                  return;
+                }
+                Navigator.pop(ctx);
+                setState(() {
+                  _pending[match.id] = Timer(const Duration(seconds: 5), () {
+                    if (mounted) setState(() => _pending.remove(match.id));
+                  });
+                });
+              },
+              child: const Text('Kaydet'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
-          FilledButton(
-            onPressed: () {
-              state.setMatchResult(
-                match.id,
-                int.tryParse(h.text) ?? 0,
-                int.tryParse(a.text) ?? 0,
-              );
-              Navigator.pop(ctx);
-              setState(() {
-                _pending[match.id] = Timer(const Duration(seconds: 5), () {
-                  if (mounted) setState(() => _pending.remove(match.id));
-                });
-              });
-            },
-            child: const Text('Kaydet'),
-          ),
-        ],
       ),
     );
   }

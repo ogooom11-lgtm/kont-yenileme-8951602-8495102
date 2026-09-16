@@ -31,9 +31,23 @@ class AppTheme {
         foregroundColor: scheme.onSurface,
       ),
       cardColor: isDark ? const Color(0xFF16241D) : Colors.white,
+      cardTheme: CardThemeData(
+        elevation: isDark ? 0 : 1,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: 0.65),
+        space: 1,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
-        indicatorColor: scheme.primary.withOpacity(0.18),
+        indicatorColor: scheme.primary.withValues(alpha: 0.18),
         labelTextStyle: WidgetStateProperty.resolveWith((s) {
           final selected = s.contains(WidgetState.selected);
           return TextStyle(
